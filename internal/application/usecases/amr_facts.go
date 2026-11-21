@@ -136,6 +136,14 @@ func (s *Service) OnLegFailed(ctx context.Context, eventID, eventType string, f 
 func (s *Service) legFailed(fl *flow, o *transportorder.Order, leg transportorder.Leg, f facts.LegFailed) error {
 	switch {
 	case f.Reason == "CANCELLED" && o.CancelRequested():
+		// carry (plan 03 Task 9 review): a cancelled leg may end with the container on the robot; the track follows it.
+		if f.ContainerOnRobot && f.Robot != "" {
+			t, err := fl.track(o.ContainerID())
+			if err != nil {
+				return err
+			}
+			t.MoveTo(containertrack.OnRobotOf(f.FleetID, f.Robot), fl.now)
+		}
 		return fl.fail(o, transportorder.FailCancelled, "")
 	case f.ContainerOnRobot || f.Reason == "DROP_FAILED":
 		if f.Robot != "" {
