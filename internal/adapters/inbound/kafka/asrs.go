@@ -53,35 +53,41 @@ type storageJobFailedData struct {
 }
 
 func (d storageJobFailedData) check() error {
-	return errors.Join(required("storage_job_id", d.StorageJobID, "asrs_id", d.AsrsID, "container_id", d.ContainerID, "reason", d.Reason,
-		"failed_at", d.FailedAt), oneOf("job_kind", d.JobKind, "STORE", "RETRIEVE"))
+	return errors.Join(required("storage_job_id", d.StorageJobID, "asrs_id", d.AsrsID, "container_id", d.ContainerID, "port_id", d.PortID,
+		"reason", d.Reason, "failed_at", d.FailedAt), oneOf("job_kind", d.JobKind, "STORE", "RETRIEVE"))
 }
+
+// equipmentStates is the pinned schema's state enum (carry (Task 15 review)).
+var equipmentStates = []string{"IDLE", "EXECUTE", "HELD"}
 
 type equipmentStateData struct {
 	AsrsID        string    `json:"asrs_id"`
 	UnitID        string    `json:"unit_id"`
-	Aisle         int       `json:"aisle"`
+	Aisle         *int      `json:"aisle"`
 	State         string    `json:"state"`
 	PreviousState string    `json:"previous_state"`
 	ChangedAt     time.Time `json:"changed_at"`
 }
 
 func (d equipmentStateData) check() error {
-	return required("asrs_id", d.AsrsID, "unit_id", d.UnitID, "state", d.State, "changed_at", d.ChangedAt)
+	return errors.Join(required("asrs_id", d.AsrsID, "unit_id", d.UnitID, "aisle", d.Aisle, "changed_at", d.ChangedAt),
+		oneOf("state", d.State, equipmentStates...), oneOf("previous_state", d.PreviousState, equipmentStates...))
 }
 
 type asrsCapacityData struct {
 	AsrsID         string    `json:"asrs_id"`
-	UnitsTotal     int       `json:"units_total"`
-	UnitsAvailable int       `json:"units_available"`
-	PositionsTotal int       `json:"positions_total"`
-	PositionsFree  int       `json:"positions_free"`
-	OpenJobs       int       `json:"open_jobs"`
+	UnitsTotal     *int      `json:"units_total"`
+	UnitsAvailable *int      `json:"units_available"`
+	PositionsTotal *int      `json:"positions_total"`
+	PositionsFree  *int      `json:"positions_free"`
+	OpenJobs       *int      `json:"open_jobs"`
 	MeasuredAt     time.Time `json:"measured_at"`
 }
 
 func (d asrsCapacityData) check() error {
-	return required("asrs_id", d.AsrsID, "measured_at", d.MeasuredAt)
+	// carry (Task 15 review): an absent count is poison; a negative one is passed on to the snapshot's clamp (D17).
+	return required("asrs_id", d.AsrsID, "units_total", d.UnitsTotal, "units_available", d.UnitsAvailable, "positions_total", d.PositionsTotal,
+		"positions_free", d.PositionsFree, "open_jobs", d.OpenJobs, "measured_at", d.MeasuredAt)
 }
 
 // AsrsHandlers maps the five consumed asrs-control types to the use cases.
@@ -100,12 +106,12 @@ func AsrsHandlers(f Facts) map[string]HandlerFunc {
 				ContainerID: d.ContainerID, PortID: d.PortID, Reference: d.Reference, Reason: d.Reason, PLCReason: d.PLCReason, At: d.FailedAt.UTC()})
 		}),
 		TypeEquipmentStateChanged: handle(func(ctx context.Context, id, typ string, d equipmentStateData) error {
-			return f.OnEquipmentStateChanged(ctx, id, typ, facts.EquipmentState{AsrsID: d.AsrsID, UnitID: d.UnitID, Aisle: d.Aisle, State: d.State,
+			return f.OnEquipmentStateChanged(ctx, id, typ, facts.EquipmentState{AsrsID: d.AsrsID, UnitID: d.UnitID, Aisle: *d.Aisle, State: d.State,
 				PreviousState: d.PreviousState, At: d.ChangedAt.UTC()})
 		}),
 		TypeAsrsCapacityChanged: handle(func(ctx context.Context, id, typ string, d asrsCapacityData) error {
-			return f.OnAsrsCapacityChanged(ctx, id, typ, facts.AsrsCapacity{AsrsID: d.AsrsID, UnitsTotal: d.UnitsTotal, UnitsAvailable: d.UnitsAvailable,
-				PositionsTotal: d.PositionsTotal, PositionsFree: d.PositionsFree, OpenJobs: d.OpenJobs, At: d.MeasuredAt.UTC()})
+			return f.OnAsrsCapacityChanged(ctx, id, typ, facts.AsrsCapacity{AsrsID: d.AsrsID, UnitsTotal: *d.UnitsTotal, UnitsAvailable: *d.UnitsAvailable,
+				PositionsTotal: *d.PositionsTotal, PositionsFree: *d.PositionsFree, OpenJobs: *d.OpenJobs, At: d.MeasuredAt.UTC()})
 		}),
 	}
 }

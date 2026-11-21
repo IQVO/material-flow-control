@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -27,25 +28,35 @@ func handle[T payload](apply func(ctx context.Context, eventID, eventType string
 	}
 }
 
-// required fails when a required string is empty or a required time is zero: pairs of name and value.
+// required fails when a required string is empty, a required time is zero or a required number or boolean is
+// absent (a nil *int or *bool, an absent or null raw value; carry (Task 15 review)): pairs of name and value.
 func required(pairs ...any) error {
 	var missing []string
 	for i := 0; i+1 < len(pairs); i += 2 {
-		switch v := pairs[i+1].(type) {
-		case string:
-			if v == "" {
-				missing = append(missing, pairs[i].(string))
-			}
-		case time.Time:
-			if v.IsZero() {
-				missing = append(missing, pairs[i].(string))
-			}
+		if absent(pairs[i+1]) {
+			missing = append(missing, pairs[i].(string))
 		}
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%w: missing %s", errBadPayload, strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func absent(v any) bool {
+	switch v := v.(type) {
+	case string:
+		return v == ""
+	case time.Time:
+		return v.IsZero()
+	case *int:
+		return v == nil
+	case *bool:
+		return v == nil
+	case json.RawMessage:
+		return len(v) == 0 || string(v) == "null"
+	}
+	return false
 }
 
 // oneOf fails a value outside its enum.
