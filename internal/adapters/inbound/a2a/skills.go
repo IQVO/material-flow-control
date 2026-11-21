@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/IQVO/material-flow-control/internal/application/usecases"
 	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
@@ -30,6 +31,9 @@ const (
 	skillSubsystemCapacity = "subsystem_capacity"
 	skillEquipmentUnits    = "equipment_units"
 )
+
+// authorityL1 is the authority every skill declares (its card tag is authority:L1): a pure read.
+const authorityL1 = "L1"
 
 // contentTypeJSON is the input mode of every skill.
 const contentTypeJSON = "application/json"
@@ -65,12 +69,16 @@ func answer(ctx context.Context, deps Deps, ec *a2asrv.ExecutorContext) a2a.Even
 	if p != nil {
 		return reply(ec, envelope{Problem: p}, p.summary())
 	}
-	ctx, span := otel.Tracer(tracerName).Start(ctx, "a2a.skill "+req.Skill)
+	// carry (Task 20 review, MCP parity): one "a2a.skill <id>" span per run with the GenAI operation and the
+	// authority every skill declares; a problem answer records the error and marks the span Error.
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "a2a.skill "+req.Skill, trace.WithAttributes(
+		attribute.String("a2a.skill", req.Skill), attribute.String("gen_ai.operation.name", "execute_tool"),
+		attribute.String("gen_ai.tool.name", req.Skill), attribute.String("warehouse.authority", authorityL1)))
 	defer span.End()
-	span.SetAttributes(attribute.String("a2a.skill", req.Skill))
 	dto, p := run(ctx, deps, req)
 	if p != nil {
-		span.SetStatus(codes.Error, p.Detail)
+		span.RecordError(errors.New(p.Code + ": " + p.Detail))
+		span.SetStatus(codes.Error, p.Code+": "+p.Detail)
 		return reply(ec, envelope{Skill: req.Skill, Problem: p}, p.summary())
 	}
 	return reply(ec, envelope{Skill: req.Skill, Data: &dto}, dto.summary)
