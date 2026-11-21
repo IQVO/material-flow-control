@@ -55,7 +55,9 @@ one-line text summary, and carries the caller's `contextId` only (no task id).
 | `equipment_units` | `asrsId` | `list_equipment_units` |
 
 A `problem` is RFC 9457-shaped (`type`, `title`, `status`, `code`, `detail`) and uses the REST adapter's type URI and
-code wherever the outcome is shared.
+code wherever the outcome is shared. Four codes exist only on the agent surfaces: `asrs-not-found` (MCP and A2A),
+`unknown-skill`, `malformed-skill-request` and `invalid-argument` (A2A); they are listed next to the REST catalogue on
+[Replay classes](/docs/development/replay-classes#codes-only-the-agent-surfaces-answer).
 
 ## Spans
 

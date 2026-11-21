@@ -45,6 +45,23 @@ and every problem type declares one replay class in `internal/adapters/inbound/h
 Every 422 carries `reason` and `transport_request_id`. A `GET` is not keyed: its class only matters where the same
 code also answers a POST.
 
+## Codes only the agent surfaces answer
+
+The read-only MCP tools and A2A skills ([Agents](/docs/ecosystem/agents)) answer with the REST codes above wherever
+the outcome is shared (`transport-request-not-found`, `container-track-not-found`, `station-not-found`,
+`invalid-parameter`, `internal-error`). Four codes exist only there; they are reads, so nothing is stored and no
+replay class applies:
+
+| Code | Status | Surface | Raised by |
+| --- | --- | --- | --- |
+| `asrs-not-found` | 404 | MCP `list_equipment_units`, A2A `equipment_units` | an `asrsId` the layout does not name (asrs-control's slug for the same outcome) |
+| `unknown-skill` | 400 | A2A | a `skill` id the Agent Card does not offer (its span is `a2a.skill unknown`) |
+| `malformed-skill-request` | 400 | A2A | a message with no parts, a first part that is not a skill request, invalid JSON, a trailing value or an inexact key, or no `skill` field |
+| `invalid-argument` | 400 | A2A | `arguments` that do not decode strictly (an unknown or inexact key, trailing data), or a required argument (`transportRequestId`, `containerId`, `stationId`, `asrsId`) that is missing or blank |
+
+An MCP tool error is an `isError` result `<code>: <detail>`; an A2A problem is the envelope's `problem` (`type`
+`https://errors.material-flow-control.warehouse-systems.dev/<code>`, `title`, `status`, `code`, `detail`).
+
 ### Why the two not-founds are RETRYABLE (ruling P4-R12)
 
 The fleet rule makes a 404 on a command's own target FINAL only when the service mints the id and never deletes it.
