@@ -33,13 +33,16 @@ about 30 s. The chart's default is 45 s and it refuses less than 30.
 | ConfigMap | every non-secret `cmd/api` variable of [Configuration](/docs/operations/configuration), plus `flow-layout.yaml`, mounted read-only at `/etc/material-flow-control/flow-layout.yaml` (`MFC_LAYOUT_FILE`) |
 | Secret | `DATABASE_URL` and `MIGRATIONS_DATABASE_URL` |
 
+`ENVIRONMENT` (`deployment.environment.name` on every span and metric; the binaries default to `local`) comes from the
+value `environment`, default `production`, for the api, mcp and a2a alike.
+
 The Secret the chart renders from `database.url` holds `DATABASE_URL` only; with `database.existingSecret` the
 Deployments read `DATABASE_URL` and, when present, `MIGRATIONS_DATABASE_URL` (the owner DSN the migrations run with;
 `optional`, falling back to `DATABASE_URL`) from that Secret.
 
 The mcp and a2a Deployments mount the same layout item and set exactly what their binaries read: `MFC_LAYOUT_FILE`,
-`DATABASE_URL` and `MIGRATIONS_DATABASE_URL` (from the Secret), `LOG_LEVEL`, `SERVICE_VERSION`, `OTEL_SERVICE_NAME`
-(`material-flow-control-mcp` / `-a2a`), `OTEL_EXPORTER_OTLP_ENDPOINT` and `MCP_ADDR` / `A2A_ADDR` (plus
+`DATABASE_URL` and `MIGRATIONS_DATABASE_URL` (from the Secret), `LOG_LEVEL`, `SERVICE_VERSION`, `ENVIRONMENT`,
+`OTEL_SERVICE_NAME` (`material-flow-control-mcp` / `-a2a`), `OTEL_EXPORTER_OTLP_ENDPOINT` and `MCP_ADDR` / `A2A_ADDR` (plus
 `A2A_AGENT_URL`, by default `http://<release>-a2a.<namespace>.svc.cluster.local:8093/`); never `KAFKA_BROKERS` nor a
 subsystem URL. Their database access is read-only in code (ruling P4-R17): every transaction they begin is
 `BEGIN READ ONLY`, so a write fails with SQLSTATE 25006 even through PgBouncer's transaction pooling, which may refuse

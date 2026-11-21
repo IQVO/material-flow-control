@@ -62,6 +62,9 @@ config:
 # config/flow-layout.example.yaml, kept equal by the render test). carry (ruling P4-R4): that file holds EXAMPLE
 # place codes; a deployed layout uses the site's real facility-layout location codes.
 layout: ""
+# ruling P4-R18: ENVIRONMENT, deployment.environment.name on every span and metric of api, mcp and a2a (the
+# binaries default to "local"). asrs-control's key and default.
+environment: "production"
 otel:
   enabled: false
   endpoint: ""

@@ -52,6 +52,9 @@ spec:
               value: {{ .Values.config.logLevel | quote }}
             - name: SERVICE_VERSION
               value: {{ include "material-flow-control.serviceVersion" . | quote }}
+            # ruling P4-R18: deployment.environment.name (read by the telemetry adapter).
+            - name: ENVIRONMENT
+              value: {{ .Values.environment | quote }}
             - name: OTEL_SERVICE_NAME
               value: "material-flow-control-mcp"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

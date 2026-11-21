@@ -26,6 +26,7 @@ data:
   TICK_INTERVAL_MS: {{ .Values.config.tickIntervalMs | quote }}
   OTEL_SERVICE_NAME: "material-flow-control"
   SERVICE_VERSION: {{ include "material-flow-control.serviceVersion" . | quote }}
+  ENVIRONMENT: {{ .Values.environment | quote }}
   OTEL_EXPORTER_OTLP_ENDPOINT: {{ ternary .Values.otel.endpoint "" .Values.otel.enabled | quote }}
   flow-layout.yaml: |
     {{- default (.Files.Get "files/flow-layout.yaml") .Values.layout | nindent 4 }}

@@ -10,8 +10,11 @@ render() { helm template material-flow-control "$chart_dir" "${vals[@]}" "$@"; }
 deployment="$(render --show-only templates/deployment.yaml)"
 configmap="$(render --show-only templates/configmap.yaml)"
 # Every variable cmd/api reads is in the ConfigMap or the Secret env, and nothing else (Task 19).
-read_vars="$(grep -ohE 'r\.(must|str|num|dur|pos)\("[A-Z_]+"' "$repo_dir"/cmd/api/config.go | grep -oE '"[A-Z_]+"' | tr -d '"' | sort -u)"
-[ "$(wc -l <<<"$read_vars")" -ge 22 ] || fail "found only $(wc -l <<<"$read_vars") env names in cmd/api: extend the pattern, never lower the floor"
+# ruling P4-R18: every binary also reads what the telemetry adapter reads itself (ENVIRONMENT).
+telemetry_vars="$(grep -ohE 'os\.Getenv\("[A-Z_]+"' "$repo_dir"/internal/adapters/outbound/telemetry/telemetry.go | grep -oE '"[A-Z_]+"' | tr -d '"')"
+grep -qx ENVIRONMENT <<<"$telemetry_vars" || fail "the telemetry adapter no longer reads ENVIRONMENT: update this test"
+read_vars="$( (grep -ohE 'r\.(must|str|num|dur|pos)\("[A-Z_]+"' "$repo_dir"/cmd/api/config.go | grep -oE '"[A-Z_]+"' | tr -d '"'; echo "$telemetry_vars") | sort -u)"
+[ "$(wc -l <<<"$read_vars")" -ge 23 ] || fail "found only $(wc -l <<<"$read_vars") env names in cmd/api: extend the pattern, never lower the floor"
 rendered="$( (grep -oE '^  [A-Z_]+:' <<<"$configmap" | tr -d ' :'; grep -oE 'name: [A-Z_]+$' <<<"$deployment" | awk '{print $2}') | sort -u)"
 diff <(echo "$read_vars") <(echo "$rendered") || fail "the api env differs from what cmd/api reads (left: read, right: rendered)"
 # The layout the chart mounts is the example layout, byte for byte.
@@ -58,7 +61,8 @@ for secret in "" existing-db; do
     d_file="$(mktemp)"
     helm template material-flow-control "$chart_dir" -f "$chart_dir/ci/all-components-values.yaml" ${extra[@]+"${extra[@]}"} \
       --show-only "templates/$c-deployment.yaml" > "$d_file"
-    want="$( (grep -ohE '(or|getenv)\("[A-Z0-9_]+"' "$repo_dir/cmd/$c/main.go" | grep -oE '"[A-Z0-9_]+"' | tr -d '"'; echo MIGRATIONS_DATABASE_URL) | sort -u)"
+    want="$( (grep -ohE '(or|getenv)\("[A-Z0-9_]+"' "$repo_dir/cmd/$c/main.go" | grep -oE '"[A-Z0-9_]+"' | tr -d '"'; echo MIGRATIONS_DATABASE_URL
+      echo "$telemetry_vars") | sort -u)"
     python3 - "$d_file" "$c" "${secret:-material-flow-control-db}" "$want" <<'PY' || { rm -f "$d_file"; fail "$c env (secret ${secret:-chart})"; }
 import sys, yaml
 path, comp, secret, want = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4].split()
@@ -112,4 +116,20 @@ python3 -c 'import sys, yaml; o = yaml.safe_load(sys.stdin)["config"]["origins"]
   <<<"$cors" || fail "cors origins list"
 render --set kongPlugins.cors.enabled=true --set 'kongPlugins.cors.origins={http://a.invalid,*}' >/dev/null 2>&1 \
   && fail "cors origins list with '*' rendered"
+# ruling P4-R18: ENVIRONMENT (deployment.environment.name on every span and metric) comes from the value
+# `environment` (asrs-control's key and default) for api, mcp and a2a, so the cluster never reports "local".
+env_of() { # <component> <values...>: the ENVIRONMENT the component's container gets
+  local comp="$1"; shift
+  if [ "$comp" = api ]; then
+    helm template material-flow-control "$chart_dir" -f "$chart_dir/ci/all-components-values.yaml" "$@" --show-only templates/configmap.yaml \
+      | python3 -c 'import sys, yaml; print(yaml.safe_load(sys.stdin)["data"].get("ENVIRONMENT", "<unset>"))'
+  else
+    helm template material-flow-control "$chart_dir" -f "$chart_dir/ci/all-components-values.yaml" "$@" --show-only "templates/$comp-deployment.yaml" \
+      | python3 -c 'import sys, yaml; d = yaml.safe_load(sys.stdin); print(next((e.get("value") for e in d["spec"]["template"]["spec"]["containers"][0]["env"] if e["name"] == "ENVIRONMENT"), "<unset>"))'
+  fi
+}
+for c in api mcp a2a; do
+  got="$(env_of "$c")"; [ "$got" = production ] || fail "$c ENVIRONMENT is '$got' by default, want 'production'"
+  got="$(env_of "$c" --set environment=staging)"; [ "$got" = staging ] || fail "$c ENVIRONMENT is '$got' with environment=staging"
+done
 echo "render_test: OK"
