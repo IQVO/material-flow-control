@@ -66,11 +66,14 @@ func (r *OutboxRepo) Insert(ctx context.Context, msgs ...outbox.Message) error {
 
 // Backlog is the unpublished outbox (the material_flow_control.outbox.backlog and .lag gauges):
 // how many rows wait, attempt-capped ones included, and how long the oldest of them has waited
-// on the database's clock (0 when nothing waits).
+// on the database's clock (0 when nothing waits). carry (Task 19 review): through inTx, so its own SET
+// LOCAL timeouts bound the read.
 func (r *OutboxRepo) Backlog(ctx context.Context) (rows int64, oldest time.Duration, err error) {
 	var seconds float64
-	err = r.pool.QueryRow(ctx, `SELECT count(*), COALESCE(EXTRACT(EPOCH FROM now() - min(created_at)), 0)::float8
-		FROM outbox_events WHERE published_at IS NULL`).Scan(&rows, &seconds)
+	err = inTx(ctx, r.pool, func(q querier) error {
+		return q.QueryRow(ctx, `SELECT count(*), COALESCE(EXTRACT(EPOCH FROM now() - min(created_at)), 0)::float8
+			FROM outbox_events WHERE published_at IS NULL`).Scan(&rows, &seconds)
+	})
 	if err != nil {
 		return 0, 0, fmt.Errorf("read the outbox backlog: %w", err)
 	}

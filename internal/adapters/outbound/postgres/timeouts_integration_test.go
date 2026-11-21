@@ -115,3 +115,44 @@ func TestAUnitStatesBothTimeouts(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// carry (Task 19 review): the two hourly purges and the backlog gauge's read run outside any unit of
+// work; they go through inTx, so on a pool with no session settings their own SET LOCAL timeouts end a
+// wait on a table another session holds ACCESS EXCLUSIVE (an autocommit statement carries none).
+func TestThePurgesAndTheBacklogReadCarryTheTimeouts(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.BarePool(t)
+	before := time.Now().Add(-time.Hour)
+	for _, c := range []struct {
+		name, table string
+		run         func(context.Context) error
+	}{
+		{"IdempotencyStore.Purge", "idempotency_keys", func(c context.Context) error {
+			_, err := postgres.NewIdempotencyStore(pool).Purge(c, before)
+			return err
+		}},
+		{"ProcessedEvents.Purge", "processed_events", func(c context.Context) error {
+			_, err := postgres.NewProcessedEvents(pool).Purge(c, before)
+			return err
+		}},
+		{"OutboxRepo.Backlog", "outbox_events", func(c context.Context) error {
+			_, _, err := postgres.NewOutboxRepo(pool).Backlog(c)
+			return err
+		}},
+	} {
+		holder, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := holder.Exec(ctx, "LOCK TABLE "+c.table+" IN ACCESS EXCLUSIVE MODE"); err != nil {
+			t.Fatal(err)
+		}
+		wctx, cancel := context.WithTimeout(ctx, 9*time.Second) // the backstop, well past the timeouts
+		start := time.Now()
+		err = c.run(wctx)
+		elapsed := time.Since(start)
+		cancel()
+		_ = holder.Rollback(ctx)
+		assertTimedOut(t, c.name, err, elapsed)
+	}
+}

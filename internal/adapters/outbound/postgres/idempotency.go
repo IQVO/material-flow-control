@@ -53,7 +53,14 @@ func (s *IdempotencyStore) Save(ctx context.Context, rec idempotency.Idempotency
 	return nil
 }
 
+// Purge deletes answers older than before. carry (Task 19 review): through inTx, so its own SET LOCAL
+// timeouts bound it under PgBouncer transaction pooling.
 func (s *IdempotencyStore) Purge(ctx context.Context, before time.Time) (int64, error) {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM idempotency_keys WHERE created_at < $1`, before.UTC())
-	return tag.RowsAffected(), err
+	var n int64
+	err := inTx(ctx, s.pool, func(q querier) error {
+		tag, err := q.Exec(ctx, `DELETE FROM idempotency_keys WHERE created_at < $1`, before.UTC())
+		n = tag.RowsAffected()
+		return err
+	})
+	return n, err
 }

@@ -28,7 +28,13 @@ func (r *ProcessedEvents) Claim(ctx context.Context, eventID, eventType string, 
 }
 
 // Purge deletes claims older than before (the hourly purge keeps 7 days: longer than any redelivery window).
+// carry (Task 19 review): through inTx, so its own SET LOCAL timeouts bound it.
 func (r *ProcessedEvents) Purge(ctx context.Context, before time.Time) (int64, error) {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM processed_events WHERE processed_at < $1`, before.UTC())
-	return tag.RowsAffected(), err
+	var n int64
+	err := inTx(ctx, r.pool, func(q querier) error {
+		tag, err := q.Exec(ctx, `DELETE FROM processed_events WHERE processed_at < $1`, before.UTC())
+		n = tag.RowsAffected()
+		return err
+	})
+	return n, err
 }
