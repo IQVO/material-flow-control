@@ -60,5 +60,7 @@ func rebind(handlers map[string]HandlerFunc, f Facts) map[string]HandlerFunc {
 	return out
 }
 
-// AmrHandlers is filled by Task 16.
-func AmrHandlers(Facts) map[string]HandlerFunc { return map[string]HandlerFunc{} }
+// NewAmrConsumer reads warehouse.amr-fleet-control.events under groupID (MFC_AMR_CONSUMER_GROUP).
+func NewAmrConsumer(brokers []string, groupID string, f Facts, logger *slog.Logger) *Consumer {
+	return newConsumer("amr-fleet-control-events", brokers, AmrTopic, groupID, AmrHandlers(f), logger)
+}
