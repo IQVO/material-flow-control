@@ -3,6 +3,7 @@ package asrs
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -50,15 +51,29 @@ type asrsView struct {
 
 func (a *Client) CreateStorageJob(ctx context.Context, key, asrsID string, r subsystem.StorageJobRequest) (subsystem.Accepted, error) {
 	var out storageJob
-	err := a.c.Do(ctx, http.MethodPost, subsystemhttp.Path("asrs", asrsID, "storage-jobs"), key,
+	path := subsystemhttp.Path("asrs", asrsID, "storage-jobs")
+	err := a.c.Do(ctx, http.MethodPost, path, key,
 		storageJobRequest{Kind: r.Kind, ContainerID: r.ContainerID, PortID: r.PortID, Reference: r.Reference}, &out)
-	return subsystem.Accepted{ID: out.StorageJobID, Status: out.Status}, err
+	return accepted(path, out, err)
 }
 
 func (a *Client) CancelStorageJob(ctx context.Context, key, asrsID, jobID string) (subsystem.Accepted, error) {
 	var out storageJob
-	err := a.c.Do(ctx, http.MethodPost, subsystemhttp.Path("asrs", asrsID, "storage-jobs", jobID, "cancellation"), key, nil, &out)
-	return subsystem.Accepted{ID: out.StorageJobID, Status: out.Status}, err
+	path := subsystemhttp.Path("asrs", asrsID, "storage-jobs", jobID, "cancellation")
+	err := a.c.Do(ctx, http.MethodPost, path, key, nil, &out)
+	return accepted(path, out, err)
+}
+
+// accepted requires the storage_job_id every StorageJob answer carries.
+// carry (Task 14 review): a 2xx without it is ErrUnreachable, never an acceptance with an empty id.
+func accepted(path string, out storageJob, err error) (subsystem.Accepted, error) {
+	if err != nil {
+		return subsystem.Accepted{}, err
+	}
+	if out.StorageJobID == "" {
+		return subsystem.Accepted{}, fmt.Errorf("%w: %s answered no id", subsystem.ErrUnreachable, path)
+	}
+	return subsystem.Accepted{ID: out.StorageJobID, Status: out.Status}, nil
 }
 
 func (a *Client) ConfirmPickup(ctx context.Context, key, asrsID, portID, containerID string) error {

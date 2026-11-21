@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,3 +43,22 @@ func TestLegNotCancellableIsRetryable(t *testing.T) {
 
 // carry (Task 8 review)
 func TestLegEndedIsRetryable(t *testing.T) { assertACancelRefusalIsRetryable(t, "leg-ended") }
+
+// carry (Task 14 review): the relationship-4 table answers a Leg (leg_id) on the 202 of RequestLeg and on the
+// 200/202 of CancelLeg; a 2xx without it is not an acceptance the dispatcher can track.
+func TestALegAnswerWithoutAnIDIsUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := amr.New(srv.URL, time.Second)
+	_, err := c.RequestLeg(context.Background(), "k", "AMR1", subsystem.LegRequest{ContainerID: "C", From: "A", To: "B", Reference: "r"})
+	if !errors.Is(err, subsystem.ErrUnreachable) || !strings.Contains(err.Error(), "/fleets/AMR1/legs answered no id") {
+		t.Fatalf("request = %v", err)
+	}
+	_, err = c.CancelLeg(context.Background(), "k", "AMR1", "leg-1")
+	if !errors.Is(err, subsystem.ErrUnreachable) || !strings.Contains(err.Error(), "/fleets/AMR1/legs/leg-1/cancellation answered no id") {
+		t.Fatalf("cancel = %v", err)
+	}
+}

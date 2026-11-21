@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/IQVO/material-flow-control/internal/application/subsystem"
@@ -31,3 +32,17 @@ func TestJobNotCancellableIsRetryable(t *testing.T) {
 
 // carry (Task 8 review)
 func TestJobEndedIsRetryable(t *testing.T) { assertACancelRefusalIsRetryable(t, "job-ended") }
+
+// carry (Task 14 review): StorageJob requires storage_job_id on the 202 of createStorageJob and on the 200/202 of
+// cancelStorageJob (apis/openapi.yaml); a 2xx without it is not an acceptance the dispatcher can track.
+func TestAStorageJobAnswerWithoutAnIDIsUnreachable(t *testing.T) {
+	c, _ := fake(t, http.StatusAccepted, `{}`)
+	_, err := c.CreateStorageJob(context.Background(), "k", "ASRS1", subsystem.StorageJobRequest{Kind: "RETRIEVE", ContainerID: "C", Reference: "r"})
+	if !errors.Is(err, subsystem.ErrUnreachable) || !strings.Contains(err.Error(), "/asrs/ASRS1/storage-jobs answered no id") {
+		t.Fatalf("create = %v", err)
+	}
+	_, err = c.CancelStorageJob(context.Background(), "k", "ASRS1", "sj-1")
+	if !errors.Is(err, subsystem.ErrUnreachable) || !strings.Contains(err.Error(), "/asrs/ASRS1/storage-jobs/sj-1/cancellation answered no id") {
+		t.Fatalf("cancel = %v", err)
+	}
+}

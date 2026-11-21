@@ -4,6 +4,7 @@ package amr
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -41,13 +42,27 @@ type leg struct {
 
 func (a *Client) RequestLeg(ctx context.Context, key, fleetID string, r subsystem.LegRequest) (subsystem.Accepted, error) {
 	var out leg
-	err := a.c.Do(ctx, http.MethodPost, subsystemhttp.Path("fleets", fleetID, "legs"), key,
+	path := subsystemhttp.Path("fleets", fleetID, "legs")
+	err := a.c.Do(ctx, http.MethodPost, path, key,
 		legRequest{ContainerID: r.ContainerID, From: r.From, To: r.To, Reference: r.Reference}, &out)
-	return subsystem.Accepted{ID: out.LegID, Status: out.Status}, err
+	return accepted(path, out, err)
 }
 
 func (a *Client) CancelLeg(ctx context.Context, key, fleetID, legID string) (subsystem.Accepted, error) {
 	var out leg
-	err := a.c.Do(ctx, http.MethodPost, subsystemhttp.Path("fleets", fleetID, "legs", legID, "cancellation"), key, nil, &out)
-	return subsystem.Accepted{ID: out.LegID, Status: out.Status}, err
+	path := subsystemhttp.Path("fleets", fleetID, "legs", legID, "cancellation")
+	err := a.c.Do(ctx, http.MethodPost, path, key, nil, &out)
+	return accepted(path, out, err)
+}
+
+// accepted requires the leg_id every Leg answer carries.
+// carry (Task 14 review): a 2xx without it is ErrUnreachable, never an acceptance with an empty id.
+func accepted(path string, out leg, err error) (subsystem.Accepted, error) {
+	if err != nil {
+		return subsystem.Accepted{}, err
+	}
+	if out.LegID == "" {
+		return subsystem.Accepted{}, fmt.Errorf("%w: %s answered no id", subsystem.ErrUnreachable, path)
+	}
+	return subsystem.Accepted{ID: out.LegID, Status: out.Status}, nil
 }
