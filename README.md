@@ -96,11 +96,14 @@ requires `Idempotency-Key`; errors are `application/problem+json` with a `code`;
 
 ## Helm chart
 
-`charts/material-flow-control` (added by the packaging step, not in the repository yet): one api Deployment (exactly
-one replica, `Recreate`), its Service, a ConfigMap with the environment and `flow-layout.yaml`, a Secret for the
-database URLs; default-off read-only mcp and a2a Deployments, the Kong routes `/api/material-flow-control`,
+`charts/material-flow-control`: one api Deployment (exactly one replica, `Recreate`, grace period 45 s), its Service,
+a ConfigMap with the environment and `flow-layout.yaml`, a Secret for the database URL; default-off read-only mcp and
+a2a Deployments (their transactions are `BEGIN READ ONLY`), the Kong routes `/api/material-flow-control`,
 `/api/mcp/material-flow-control` and `/api/a2a/material-flow-control`, and the KongPlugins `cors`, `prometheus` and
-`opentelemetry`.
+`opentelemetry`. Chart tests: `bash charts/material-flow-control/tests/render_test.sh`,
+`python3 charts/material-flow-control/tests/test_service_selectors.py`,
+`python3 charts/material-flow-control/tests/test_kong_config.py` (helm and PyYAML). See
+[Deployment](docs/docs/operations/deployment.md).
 
 ## Local development
 

@@ -74,8 +74,9 @@ binaries, never a silent fallback to `info`.
 | `SERVICE_VERSION` | `dev` | `service.version` and the Agent Card version. |
 | `ENVIRONMENT` | `local` | `deployment.environment.name`. |
 
-The read pools of `cmd/mcp` and `cmd/a2a` must be read-only at the session level in a deployment: their
-`DATABASE_URL` carries `default_transaction_read_only=on` (ruling P4-R17).
+The database access of `cmd/mcp` and `cmd/a2a` is read-only in code (ruling P4-R17): every transaction they begin
+is `BEGIN READ ONLY`, so a write fails with SQLSTATE 25006 whatever the DSN says (PgBouncer's transaction pooling may
+refuse a `default_transaction_read_only` startup parameter, so none is needed).
 
 ## The material-flow layout file (decision D1)
 
@@ -91,7 +92,8 @@ The read pools of `cmd/mcp` and `cmd/a2a` must be read-only at the session level
 | `clarificationPoints[]` | `locationCode`, `handoffPointId`; at least one |
 
 AS/RS and port ids must equal asrs-control's layout; handoff point ids must be amr-fleet-control map nodes. The three
-files change together. `config/flow-layout.example.yaml`:
+files change together. An unknown key, an empty file (`layout is empty`) and an id or location code with
+surrounding whitespace are boot errors that name the file and the entry. `config/flow-layout.example.yaml`:
 
 ```yaml
 # The example material-flow layout (ADR 0002) of the emulator's example floor: AS/RS ASRS1 (asrs-control's
@@ -99,6 +101,9 @@ files change together. `config/flow-layout.example.yaml`:
 # amr-fleet-control's map nodes ASRS1-IN1/OUT1/IN2/OUT2; goods-to-person station ST1; the decant handoff on map node
 # ST2; and PK1 (pack), FWD1 (forward area) and CLR1 (clarification), which amr-fleet-control's example map does NOT
 # have yet (plan 04 Q6: plan 06 adds them). Location codes follow facility-layout's AS/RS convention (plan 05a D14).
+# carry (Task 2 review, ruling P4-R4): the place codes here are EXAMPLE codes (the 3-segment WH1-GTP-ST1, WH1-RCV-DEC1,
+# WH1-PCK-PK1, WH1-FWD-FWD1, WH1-CLR-CLR1 are not facility-layout LocationCodes); a deployed layout uses the site's
+# real facility-layout location codes. material-flow-control treats place codes as opaque strings.
 siteId: WH1
 fleet:
   fleetId: AMR1

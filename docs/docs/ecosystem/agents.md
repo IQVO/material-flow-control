@@ -11,8 +11,8 @@ description: "The read-only MCP server and A2A agent: five L1 tools and five L1 
 (warehouse-ops-agent, warehouse-console) explain why a transport waits, which leg and which robot, without being able
 to move anything. Both are **READ-ONLY at authority L1**: they wire the layout and the Postgres read repositories
 into `usecases.Reader` (the same queries the REST adapter serves) and nothing else; they never dial Kafka, never call
-a subsystem and never start the relay or the dispatcher. Their pool is read-only at the session level
-(`default_transaction_read_only=on`, ruling P4-R17). No authentication of any kind (fleet decision): the ClusterIP
+a subsystem and never start the relay or the dispatcher. Their database access is read-only in code: every
+transaction they begin is `BEGIN READ ONLY` (ruling P4-R17), so a write fails with SQLSTATE 25006. No authentication of any kind (fleet decision): the ClusterIP
 boundary is the control. Equipment ids (robot keys, storage job and leg ids) appear ONLY here, never on the
 relationship-1 interface or the published events.
 
