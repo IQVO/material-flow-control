@@ -127,8 +127,6 @@ func (s *Service) write(ctx context.Context, fn func(ctx context.Context) error)
 }
 
 // consume applies one Kafka fact: the inbox claim and every effect in one unit of work (checklist item 3).
-//
-//nolint:unused // Task 9 report D2: first caller lands in Task 10 (fact handlers); remove the directive there
 func (s *Service) consume(ctx context.Context, eventID, eventType string, fn func(ctx context.Context) error) error {
 	return s.write(ctx, func(ctx context.Context) error {
 		fresh, err := s.d.Inbox.Claim(ctx, eventID, eventType, s.now())

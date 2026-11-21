@@ -62,8 +62,6 @@ func (f *flow) orderByID(id string) (*transportorder.Order, error) {
 }
 
 // orderByRef finds the order owning a leg reference; nil (no error) for a reference this context does not own.
-//
-//nolint:unused // Task 9 report D2: first caller lands in Task 10 (fact handlers); remove the directive there
 func (f *flow) orderByRef(ref string) (*transportorder.Order, error) {
 	if ref == "" {
 		return nil, nil
@@ -214,8 +212,6 @@ func (f *flow) fail(o *transportorder.Order, reason transportorder.FailReason, s
 
 // clarify holds the container (decision D12) and fails its order; a container standing on an AS/RS output port
 // is moved to the clarification point by an internal order. An internal order is only failed.
-//
-//nolint:unused // Task 9 report D2: first caller lands in Task 10 (fact handlers); remove the directive there
 func (f *flow) clarify(o *transportorder.Order, c containertrack.Clarification, at layout.Place, reason transportorder.FailReason, sub string) error {
 	if o.Internal() {
 		return f.fail(o, reason, sub)
@@ -252,6 +248,4 @@ func (f *flow) clarify(o *transportorder.Order, c containertrack.Clarification, 
 }
 
 // publishCapacity saves a snapshot and publishes it when a published field changed.
-//
-//nolint:unused // Task 9 report D2: first caller lands in Task 10 (fact handlers); remove the directive there
 func (f *flow) publishCapacity(snap capacity.Snapshot) { f.caps = append(f.caps, snap) }

@@ -43,7 +43,7 @@ type env struct {
 	asrs    *memory.Asrs
 	amr     *memory.Amr
 	metrics *memory.Metrics
-	eventN  int //nolint:unused // Task 9 report D2: used by Task 10's fact tests (e.id())
+	eventN  int
 }
 
 func newEnv(t *testing.T) *env {
@@ -110,7 +110,6 @@ func (e *env) pending(kind command.Kind) []command.Command {
 	return out
 }
 
-//nolint:unused // Task 9 report D2: used by Task 10's fact tests
 func (e *env) id() string {
 	e.eventN++
 	return fmt.Sprintf("ev-%d", e.eventN)
