@@ -43,3 +43,16 @@ refused at once, a `…/cancellation` sub-resource, every POST idempotent).
   one key that both pass the Lookup before either committed are serialized by the flow lock: the second runs,
   loses the key at save time and rolls back everything it wrote, answering the first answer (same body) or
   `409 idempotency-key-reused` (another body). The narrow cost: the loser's use case executes once, invisibly.
+  A FINAL refusal is resolved the same way by `finishRefused`, save then re-read: its row is saved on its own after
+  the rollback and the key is read back, so when a concurrent request stored its answer first, this request answers
+  that stored answer (same body) or `409 idempotency-key-reused` (another body), never its own refusal.
+- Releasing a key (a RETRYABLE refusal, a 5xx, a panic) stores nothing, so the same key with ANOTHER body afterwards
+  is a NEW request that executes, not `409 idempotency-key-reused`.
+- An unstored refusal re-reads the key before answering (ruling P4-R16): a duplicate that passed the Lookup while
+  the first copy was in flight waits on the flow lock and decides only after the first copy committed its answer;
+  when it reaches a RETRYABLE refusal (the hold already lifted, the transport already ended), `finishRefused` looks
+  the key up again and replays the stored answer (another body: `409 idempotency-key-reused`). N in-flight
+  duplicates are one run and N-1 replays. A failed re-read is logged at WARN and the request's own refusal goes out.
+- A not-found on a keyed POST is RETRYABLE (decision 3, ruling P4-R12): a cancellation that raced ahead of its
+  request, or a resolution sent before the container's first fact, answers `404` now and executes when retried once
+  the target exists, instead of replaying the `404` for 24 hours.
