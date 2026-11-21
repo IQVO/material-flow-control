@@ -91,3 +91,16 @@ func TestFactsAreAcceptedInAnyOrderTheSubsystemCanSendThem(t *testing.T) {
 		t.Fatalf("Admitted without a waiting leg = %v", err)
 	}
 }
+
+// carry (Task 11 review): a subsystem may accept a leg after its order ended (the dispatcher calls outside the unit
+// of work); Requested records the subsystem's id on the CANCELLED leg so the use case can cancel it, and moves no
+// status.
+func TestALegAcceptedAfterTheOrderEndedKeepsItsSubsystemID(t *testing.T) {
+	o := accept(t, tr.PurposePutaway, decant, asrs, putawayPlan())
+	first, _ := o.Next(t0)
+	must(t, o.Fail(to.FailCancelled, "", "", t0))
+	must(t, o.Requested(first.Ref, "leg-a", t0.Add(time.Minute)))
+	if l, _ := o.LegByRef(first.Ref); l.Status != to.LegCancelled || l.SubsystemRef != "leg-a" || !l.UpdatedAt.Equal(first.UpdatedAt) {
+		t.Fatalf("leg = %+v", l)
+	}
+}

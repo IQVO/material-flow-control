@@ -140,6 +140,7 @@ func (s *Service) outcome(f *flow, c command.Command, o *transportorder.Order, r
 	case res.err == nil:
 		if c.Kind == command.RequestLeg {
 			_ = o.Requested(c.LegRef, res.accepted.ID, f.now)
+			cancelOrphan(f, c, o)
 		}
 		return c.Done(f.now), nil
 	}
@@ -151,6 +152,16 @@ func (s *Service) outcome(f *flow, c command.Command, o *transportorder.Order, r
 		return s.retryOrGiveUp(f, c, o, refusal.Code, refusal.Error())
 	}
 	return s.retryOrGiveUp(f, c, o, unreachableReason, res.err.Error())
+}
+
+// cancelOrphan stops a leg or storage job the subsystem accepted after its order ended meanwhile (the call runs
+// outside the unit of work): Requested kept the subsystem's id on the CANCELLED leg, so a best-effort CANCEL_LEG
+// (key cancel-<ref>) reaches it; otherwise the subsystem would run an orphan nobody follows (decision D12).
+// carry (Task 11 review)
+func cancelOrphan(f *flow, c command.Command, o *transportorder.Order) {
+	if leg, ok := o.LegByRef(c.LegRef); ok && o.Ended() && leg.Status == transportorder.LegCancelled && leg.SubsystemRef != "" {
+		f.enqueue(o.ID(), c.LegRef, command.CancelLeg)
+	}
 }
 
 func (s *Service) refused(f *flow, c command.Command, o *transportorder.Order, r *subsystem.Refusal) (command.Command, error) {
