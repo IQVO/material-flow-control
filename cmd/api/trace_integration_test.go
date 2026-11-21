@@ -57,7 +57,16 @@ func TestADispatchedRequestLegReachesTheFleetWithATraceparent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(a.pool.Close)
+	// carry (Task 19 review): close what wire built (the readers and DLQ writers, then the relay sink and
+	// the pool), so nothing keeps dialling 127.0.0.1:1 for the rest of the test binary.
+	t.Cleanup(func() {
+		for _, c := range a.consumers {
+			_ = c.close()
+		}
+		for _, f := range a.closers {
+			f()
+		}
+	})
 	if _, err := a.svc.RequestTransport(ctx, transportrequest.Request{ID: "rq-1", ContainerID: "TOTE-1", Source: "WH1-RCV-DEC1",
 		Destination: "WH1-PCK-PK1", Purpose: transportrequest.PurposeOutbound, Priority: transportrequest.PriorityNormal,
 		DueBy: time.Now().Add(time.Hour)}); err != nil {

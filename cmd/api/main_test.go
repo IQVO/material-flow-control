@@ -36,3 +36,22 @@ func TestABootErrorIsOneJSONLineNamingEveryBadVariable(t *testing.T) {
 		}
 	}
 }
+
+// carry (Task 19 review): the listener is taken before wire builds anything, so a busy ADDR fails the
+// boot before a consumer joined its group or a pool opened (nothing is left to close on that path).
+// The layout file does not exist: a wire that ran first would fail on it instead.
+func TestABusyAddressFailsTheBootBeforeAnythingIsWired(t *testing.T) {
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	busy := listen(t)
+	t.Cleanup(func() { _ = busy.Close() })
+	m := full()
+	m["ADDR"], m["MFC_LAYOUT_FILE"] = busy.Addr().String(), "/nonexistent/layout.yaml"
+	var out bytes.Buffer
+	if code := boot(&out, env(m)); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if got := out.String(); !strings.Contains(got, "listen") || strings.Contains(got, "layout /nonexistent") {
+		t.Fatalf("boot log = %q, want the listen error and no layout error (Listen must precede wire)", got)
+	}
+}
