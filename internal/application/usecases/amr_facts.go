@@ -122,7 +122,13 @@ func (s *Service) OnLegFailed(ctx context.Context, eventID, eventType string, f 
 		if err != nil {
 			return err
 		}
-		if o == nil || o.LegFailed(f.Reference, fl.now) != nil {
+		if o == nil {
+			return fl.commit()
+		}
+		if o.LegFailed(f.Reference, fl.now) != nil {
+			if err := endedOnRobot(fl, o, f); err != nil {
+				return err
+			}
 			return fl.commit()
 		}
 		leg, _ := o.LegByRef(f.Reference)
@@ -131,6 +137,23 @@ func (s *Service) OnLegFailed(ctx context.Context, eventID, eventType string, f 
 		}
 		return fl.commit()
 	})
+}
+
+// endedOnRobot follows a container a robot still carries after its order ended (e.g. Tick failed it TIMEOUT and
+// the best-effort CANCEL_LEG answered CANCELLED with the load): the track moves onto the robot and is held
+// CONTAINER_ON_FAILED_ROBOT; an already-held track keeps its first hold (ruling P4-R5). The order is unchanged.
+// carry (Task 10 review): decision D16, the track follows physical facts even for an ended order.
+func endedOnRobot(fl *flow, o *transportorder.Order, f facts.LegFailed) error {
+	if !o.Ended() || !f.ContainerOnRobot || f.Robot == "" {
+		return nil
+	}
+	t, err := fl.track(o.ContainerID())
+	if err != nil {
+		return err
+	}
+	t.MoveTo(containertrack.OnRobotOf(f.FleetID, f.Robot), fl.now)
+	leg, _ := o.LegByRef(f.Reference)
+	return fl.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, leg.From, transportorder.FailSubsystemFault, f.Reason)
 }
 
 func (s *Service) legFailed(fl *flow, o *transportorder.Order, leg transportorder.Leg, f facts.LegFailed) error {
