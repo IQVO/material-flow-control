@@ -40,6 +40,7 @@ func wire(ctx context.Context, cfg config, log *slog.Logger) (*app, error) {
 		return nil, err
 	}
 	outboxRepo := postgres.NewOutboxRepo(pool)
+	observeOutbox(log, metrics, outboxRepo.Backlog)
 	uow := postgres.NewUnitOfWork(pool)
 	k := newKicker()
 	svc, err := usecases.NewService(l, cfg.UseCases, usecases.Deps{UoW: uow, Lock: postgres.NewFlowLock(pool),

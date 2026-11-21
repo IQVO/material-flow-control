@@ -2,6 +2,7 @@ package telemetry_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -53,4 +54,65 @@ func TestEveryEndingIsCountedOnceWithPurposeOutcomeAndReason(t *testing.T) {
 	}
 	var nilMetrics *telemetry.TransportMetrics
 	nilMetrics.TransportEnded(ctx, "PICK", "completed", "", 0)
+}
+
+// ruling P4-R15: the outbox gauges (asrs-control ObserveOutbox parity, names per OutboxRepo.Backlog).
+func TestTheOutboxGaugesObserveTheBacklogAndLag(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+	t.Cleanup(func() { otel.SetMeterProvider(prev) })
+	m, err := telemetry.NewTransportMetrics()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := m.ObserveOutbox(func(context.Context) (int64, time.Duration, error) { return 7, 90 * time.Second, nil })
+	if err != nil {
+		t.Fatalf("ObserveOutbox: %v", err)
+	}
+	defer func() { _ = reg.Unregister() }()
+	got := collectGauges(t, reader)
+	backlog, ok := got["material_flow_control.outbox.backlog"].(metricdata.Gauge[int64])
+	if !ok || len(backlog.DataPoints) != 1 || backlog.DataPoints[0].Value != 7 {
+		t.Errorf("backlog = %+v, want one point of 7", got["material_flow_control.outbox.backlog"])
+	}
+	lag, ok := got["material_flow_control.outbox.lag"].(metricdata.Gauge[float64])
+	if !ok || len(lag.DataPoints) != 1 || lag.DataPoints[0].Value != 90 {
+		t.Errorf("lag = %+v, want one point of 90 seconds", got["material_flow_control.outbox.lag"])
+	}
+}
+
+// A failed backlog read observes nothing: a database outage is a gap in the series, never a zero backlog.
+func TestTheOutboxGaugesObserveNothingWhenTheReadFails(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+	t.Cleanup(func() { otel.SetMeterProvider(prev) })
+	m, err := telemetry.NewTransportMetrics()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := m.ObserveOutbox(func(context.Context) (int64, time.Duration, error) { return 0, 0, errors.New("db down") })
+	if err != nil {
+		t.Fatalf("ObserveOutbox: %v", err)
+	}
+	defer func() { _ = reg.Unregister() }()
+	if g, ok := collectGauges(t, reader)["material_flow_control.outbox.backlog"].(metricdata.Gauge[int64]); ok && len(g.DataPoints) > 0 {
+		t.Errorf("a failed read must observe no backlog point, got %+v", g.DataPoints)
+	}
+}
+
+func collectGauges(t *testing.T, r *sdkmetric.ManualReader) map[string]metricdata.Aggregation {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	if err := r.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	out := map[string]metricdata.Aggregation{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			out[m.Name] = m.Data
+		}
+	}
+	return out
 }

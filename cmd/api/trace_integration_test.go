@@ -57,16 +57,9 @@ func TestADispatchedRequestLegReachesTheFleetWithATraceparent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// carry (Task 19 review): close what wire built (the readers and DLQ writers, then the relay sink and
-	// the pool), so nothing keeps dialling 127.0.0.1:1 for the rest of the test binary.
-	t.Cleanup(func() {
-		for _, c := range a.consumers {
-			_ = c.close()
-		}
-		for _, f := range a.closers {
-			f()
-		}
-	})
+	// carry (Task 19 review): close what wire built, so nothing keeps dialling 127.0.0.1:1 for the rest
+	// of the test binary.
+	t.Cleanup(func() { closeWired(a) })
 	if _, err := a.svc.RequestTransport(ctx, transportrequest.Request{ID: "rq-1", ContainerID: "TOTE-1", Source: "WH1-RCV-DEC1",
 		Destination: "WH1-PCK-PK1", Purpose: transportrequest.PurposeOutbound, Priority: transportrequest.PriorityNormal,
 		DueBy: time.Now().Add(time.Hour)}); err != nil {
@@ -80,5 +73,15 @@ func TestADispatchedRequestLegReachesTheFleetWithATraceparent(t *testing.T) {
 	re := regexp.MustCompile(`^POST /fleets/AMR1/legs traceparent=00-[0-9a-f]{32}-[0-9a-f]{16}-01$`)
 	if len(seen) != 1 || !re.MatchString(seen[0]) {
 		t.Fatalf("fleet saw %q, want one POST /fleets/AMR1/legs with a sampled traceparent", seen)
+	}
+}
+
+// closeWired closes what wire built: the readers and DLQ writers, then the relay sink and the pool.
+func closeWired(a *app) {
+	for _, c := range a.consumers {
+		_ = c.close()
+	}
+	for _, f := range a.closers {
+		f()
 	}
 }

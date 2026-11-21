@@ -37,6 +37,17 @@ func startTelemetry(log *slog.Logger, cfg config) (func(), error) {
 	}, nil
 }
 
+// observeOutbox registers the outbox backlog and lag gauges over read (ruling P4-R15, asrs-control
+// 007bf7b parity); a registration failure costs the gauges, never the boot.
+func observeOutbox(log *slog.Logger, m *telemetry.TransportMetrics, read telemetry.OutboxBacklogReader) {
+	if m == nil {
+		return
+	}
+	if _, err := m.ObserveOutbox(read); err != nil {
+		log.Warn("outbox gauges unavailable", "error", err)
+	}
+}
+
 // newLoggerTo is the JSON logger on w at level, stamping trace_id/span_id on every record
 // written under a span.
 func newLoggerTo(w io.Writer, level string) *slog.Logger {
