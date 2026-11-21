@@ -73,8 +73,10 @@ func assertTheRefusalClasses(t *testing.T, c *amr.Client, set func(status int, a
 			t.Fatalf("%s = %v", code, err)
 		}
 	}
-	set(http.StatusUnprocessableEntity, `{"status":422,"code":"unknown-handoff-point"}`)
+	// carry (Task 19 review, plan 03 P3-R13): unknown-handoff-point is RETRYABLE now
+	// (TestTheConfigurationDecidedRefusalsAreRetryable); the FINAL probe uses bad-request, still FINAL.
+	set(http.StatusBadRequest, `{"status":400,"code":"bad-request"}`)
 	if _, err := c.RequestLeg(context.Background(), "k", "AMR1", subsystem.LegRequest{}); !errors.As(err, &r) || r.Retryable {
-		t.Fatalf("unknown-handoff-point = %v", err)
+		t.Fatalf("bad-request = %v", err)
 	}
 }

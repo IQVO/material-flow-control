@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -88,5 +89,26 @@ func TestAnEmptyReferenceIsOmittedFromTheLegRequest(t *testing.T) {
 	}
 	if bodies[1]["reference"] != "to-1.2.1" || len(bodies[1]) != 4 {
 		t.Fatalf("reference body = %v", bodies[1])
+	}
+}
+
+// carry (Task 19 review, plan 03 P3-R13): a refusal decided by configuration that can change inside the 24 h
+// replay window (the map file: unknown-handoff-point, fleet-not-found; robots are created by robot facts:
+// robot-not-found) is RETRYABLE, so a map fix deploy does not leave the dispatcher's same-key retries pinned.
+func TestTheConfigurationDecidedRefusalsAreRetryable(t *testing.T) {
+	for code, status := range map[string]int{"unknown-handoff-point": http.StatusUnprocessableEntity,
+		"fleet-not-found": http.StatusNotFound, "robot-not-found": http.StatusNotFound} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(status)
+			_, _ = io.WriteString(w, `{"status":`+strconv.Itoa(status)+`,"code":"`+code+`"}`)
+		}))
+		_, err := amr.New(srv.URL, time.Second).RequestLeg(context.Background(), "k", "AMR1",
+			subsystem.LegRequest{ContainerID: "C", From: "A", To: "B", Reference: "r"})
+		srv.Close()
+		var r *subsystem.Refusal
+		if !errors.As(err, &r) || r.Status != status || r.Code != code || !r.Retryable {
+			t.Errorf("%s = %v, want a RETRYABLE %d refusal", code, err, status)
+		}
 	}
 }
