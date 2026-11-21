@@ -30,3 +30,18 @@ between the state change and the publish, and must not carry equipment vocabular
 - A PICK publishes `ContainerArrivedAtStation` and then `TransportCompleted`: every accepted request ends in
   exactly one outcome, and the arrival is the WES's cue to start the pick.
 - warehouse-docs owes an edit of the example type in seam decision 5 and the context page (plan Q2).
+
+## Type catalogue
+
+The full CloudEvents `type` of every fact this context publishes (`apis/asyncapi.yaml`; source
+`/warehouse/material-flow-control`, dataschema `urn:warehouse:material-flow-control:<events|analytics>:<EventName>:v1`):
+
+| Type | Subject and Kafka key |
+| --- | --- |
+| `com.warehouse.wes.material-flow-control.transportrequest.TransportRejected` | transport_request_id |
+| `com.warehouse.wes.material-flow-control.transportorder.TransportAccepted` | transport order id |
+| `com.warehouse.wes.material-flow-control.transportorder.ContainerArrivedAtStation` | transport order id |
+| `com.warehouse.wes.material-flow-control.transportorder.TransportCompleted` | transport order id |
+| `com.warehouse.wes.material-flow-control.transportorder.TransportFailed` | transport order id |
+| `com.warehouse.wes.material-flow-control.containertrack.ContainerSentToClarification` | container id |
+| `com.warehouse.wes.material-flow-control.subsystemcapacity.SubsystemCapacityChanged` | `<kind>/<id>` |
