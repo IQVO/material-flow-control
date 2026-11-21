@@ -13,6 +13,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/kafka v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.45.0
 	go.opentelemetry.io/otel v1.47.0
+	go.opentelemetry.io/otel/sdk v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 	gopkg.in/yaml.v3 v3.0.1
 )
