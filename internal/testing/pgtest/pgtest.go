@@ -113,3 +113,16 @@ func Pool(t *testing.T) *pgxpool.Pool {
 	t.Cleanup(pool.Close)
 	return pool
 }
+
+// BarePool opens a pool on a fresh database WITHOUT NewPool's session settings (AfterConnect),
+// closed at cleanup: what a transaction pooler (PgBouncer pool_mode=transaction) leaves a
+// transaction with. carry (Task 13 review): the pattern of amr-fleet-control's pgtest.BarePool.
+func BarePool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	pool, err := pgxpool.New(context.Background(), URL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}

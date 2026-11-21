@@ -86,7 +86,7 @@ type pendingRow struct {
 // in id order and stops at the first failure, which it records on the row (at-least-once,
 // same CloudEvents id on a retry). maxAttempts > 0 skips rows that reached the cap.
 func (r *OutboxRepo) Drain(ctx context.Context, limit, maxAttempts int, send func(context.Context, outbox.Message) error) (int, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := begin(ctx, r.pool) // carry (Task 13 review): SET LOCAL timeouts
 	if err != nil {
 		return 0, fmt.Errorf("begin outbox pass: %w", err)
 	}
