@@ -13,9 +13,6 @@ import (
 	kafkago "github.com/segmentio/kafka-go"
 
 	mfchttp "github.com/IQVO/material-flow-control/internal/adapters/inbound/http"
-	"github.com/IQVO/material-flow-control/internal/adapters/inbound/kafka"
-	outkafka "github.com/IQVO/material-flow-control/internal/adapters/outbound/kafka"
-	"github.com/IQVO/material-flow-control/internal/adapters/outbound/outbox"
 	"github.com/IQVO/material-flow-control/internal/application/usecases"
 )
 
@@ -30,10 +27,19 @@ type app struct {
 	kick      *kicker
 	readiness *mfchttp.Readiness
 	server    *nethttp.Server
-	relay     *outbox.Relay
-	relaySink *outkafka.RelaySink
-	consumers []*kafka.Consumer
+	consumers []stoppable
+	loops     []func(context.Context)
+	closers   []func()
 	purgers   []purger
+}
+
+// stoppable is one fact consumer as run sees it: run until ctx ends, then close. carry (Task 15
+// review): run closes each one as soon as its own run returned, concurrently with the other and
+// with the HTTP drain.
+type stoppable struct {
+	name  string
+	run   func(context.Context) error
+	close func() error
 }
 
 // kicker wakes the dispatcher after a commit that queued a command (ports.Kicker); it never blocks.
@@ -59,22 +65,11 @@ func kafkaCheck(brokers []string) func(context.Context) error {
 }
 
 func (a *app) run(ctx context.Context, ln net.Listener) error {
-	var wg sync.WaitGroup
-	loop := func(f func(context.Context)) {
-		wg.Add(1)
-		go func() { defer wg.Done(); f(ctx) }()
+	var loops sync.WaitGroup
+	for _, f := range a.loops {
+		loops.Go(func() { f(ctx) })
 	}
-	for _, c := range a.consumers {
-		loop(func(ctx context.Context) {
-			if err := c.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				a.log.ErrorContext(ctx, "consumer stopped", "consumer", c.Name, "error", err)
-			}
-		})
-	}
-	loop(a.dispatch)
-	loop(a.tick)
-	loop(a.purge)
-	loop(func(ctx context.Context) { _ = a.relay.Run(ctx) })
+	stopped := a.startConsumers(ctx)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- a.server.Serve(ln) }()
 	var err error
@@ -83,19 +78,49 @@ func (a *app) run(ctx context.Context, ln net.Listener) error {
 	case err = <-serveErr:
 	}
 	a.readiness.SetNotReady()
+	closed := a.closeConsumers(stopped)
 	drain, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	shutdownErr := a.server.Shutdown(drain)
-	wg.Wait()
-	for _, c := range a.consumers {
-		_ = c.Close()
+	closed.Wait()
+	loops.Wait()
+	for _, f := range a.closers {
+		f()
 	}
-	_ = a.relaySink.Close()
-	a.pool.Close()
 	if err != nil && !errors.Is(err, nethttp.ErrServerClosed) {
 		return err
 	}
 	return shutdownErr
+}
+
+// startConsumers runs every consumer; each returned channel closes when that consumer's run returned.
+func (a *app) startConsumers(ctx context.Context) []chan struct{} {
+	stopped := make([]chan struct{}, len(a.consumers))
+	for i, c := range a.consumers {
+		stopped[i] = make(chan struct{})
+		go func() {
+			defer close(stopped[i])
+			if err := c.run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				a.log.ErrorContext(ctx, "consumer stopped", "consumer", c.name, "error", err)
+			}
+		}()
+	}
+	return stopped
+}
+
+// closeConsumers closes each consumer once its run returned, all of them concurrently and while the
+// caller drains HTTP (carry, Task 15 review); Wait on the result before closing the pool.
+func (a *app) closeConsumers(stopped []chan struct{}) *sync.WaitGroup {
+	var wg sync.WaitGroup
+	for i, c := range a.consumers {
+		wg.Go(func() {
+			<-stopped[i]
+			if err := c.close(); err != nil {
+				a.log.Warn("consumer close failed", "consumer", c.name, "error", err)
+			}
+		})
+	}
+	return &wg
 }
 
 // dispatch runs DispatchDue until nothing is due, on every kick and every DispatchPoll (decision D19).

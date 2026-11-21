@@ -57,15 +57,32 @@ func wire(ctx context.Context, cfg config, log *slog.Logger) (*app, error) {
 		mfchttp.Dependency{Name: "kafka", Check: kafkaCheck(cfg.Brokers)})
 	idem := mfchttp.NewIdempotency(postgres.NewIdempotencyStore(pool), uow, system.Clock{})
 	sink := outkafka.NewRelaySink(cfg.Brokers)
-	return &app{cfg: cfg, log: log, pool: pool, svc: svc, kick: k, readiness: readiness, relaySink: sink,
+	relay := outbox.NewOutboxRelay(outboxRepo, sink, log, outbox.WithInterval(cfg.OutboxInterval),
+		outbox.WithBatchSize(cfg.OutboxBatch), outbox.WithMaxAttempts(cfg.OutboxMaxAttempts))
+	a := &app{cfg: cfg, log: log, pool: pool, svc: svc, kick: k, readiness: readiness,
 		server: &nethttp.Server{Handler: mfchttp.NewRouter(&mfchttp.Server{Service: svc, Idempotency: idem.Middleware, Readiness: readiness,
 			ServiceName: cfg.ServiceName}, log), ReadHeaderTimeout: 5 * time.Second},
-		relay: outbox.NewOutboxRelay(outboxRepo, sink, log, outbox.WithInterval(cfg.OutboxInterval),
-			outbox.WithBatchSize(cfg.OutboxBatch), outbox.WithMaxAttempts(cfg.OutboxMaxAttempts)),
-		consumers: []*kafka.Consumer{kafka.NewAsrsConsumer(cfg.Brokers, cfg.AsrsGroup, svc, log),
-			kafka.NewAmrConsumer(cfg.Brokers, cfg.AmrGroup, svc, log)},
+		consumers: stoppables(newConsumers(cfg, svc, log)),
+		closers:   []func(){func() { _ = sink.Close() }, pool.Close},
 		purgers: []purger{{"idempotency_keys", postgres.NewIdempotencyStore(pool), mfchttp.IdempotencyWindow},
-			{"processed_events", postgres.NewProcessedEvents(pool), inboxRetention}}}, nil
+			{"processed_events", postgres.NewProcessedEvents(pool), inboxRetention}}}
+	a.loops = []func(context.Context){a.dispatch, a.tick, a.purge, func(ctx context.Context) { _ = relay.Run(ctx) }}
+	return a, nil
+}
+
+// newConsumers builds the two fact consumers, asrs then amr, under the groups the environment names
+// (MFC_ASRS_CONSUMER_GROUP, MFC_AMR_CONSUMER_GROUP).
+func newConsumers(cfg config, svc *usecases.Service, log *slog.Logger) []*kafka.Consumer {
+	return []*kafka.Consumer{kafka.NewAsrsConsumer(cfg.Brokers, cfg.AsrsGroup, svc, log),
+		kafka.NewAmrConsumer(cfg.Brokers, cfg.AmrGroup, svc, log)}
+}
+
+func stoppables(cs []*kafka.Consumer) []stoppable {
+	out := make([]stoppable, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, stoppable{name: c.Name, run: c.Run, close: c.Close})
+	}
+	return out
 }
 
 // purger is a store with an age-based purge and how long its rows are kept (the 24-hour idempotency window; the
