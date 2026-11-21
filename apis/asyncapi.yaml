@@ -138,7 +138,7 @@ components:
     ContainerSentToClarification:
       title: Container sent to clarification
       summary: The container is held at clarification and is never dispatched until resolved.
-      description: '`type` = `com.warehouse.wes.material-flow-control.containertrack.ContainerSentToClarification`; subject and key = the container id. `detected_at_location` is a location code, a station id or, for a container on a failed robot, the fleet id; `clarification_point` is set when the container is moved there.'
+      description: '`type` = `com.warehouse.wes.material-flow-control.containertrack.ContainerSentToClarification`; subject and key = the container id. `detected_at_location` is the location code or station id where the problem was detected; for a container on a failed robot, the place the failed leg started from. `transport_order_id` may name an internal clarification move, and then `transport_request_id` is absent. `clarification_point` is set when the container is moved there.'
       contentType: application/cloudevents+json
       x-no-consumer-reason: 'pending: exception-management WCS anomalies (plan 05b)'
       payload: {$ref: '#/components/schemas/ContainerSentToClarificationEvent'}
@@ -158,7 +158,7 @@ components:
         `<subsystem_kind>/<subsystem_id>`. Published when any field other than `measured_at` changed, never periodically
         (ADR 0006). A consumer must branch on `subsystem_kind`: `buffer_limit`, `occupied` and `queue_depth` are meaningful only for `STATION` (0 for `AMR_FLEET` and `ASRS`),
         and the units mean different things per kind, so never sum `units_available` or `open_work` across kinds
-        (`AMR_FLEET` available = idle and assignable robots; `ASRS` available = units not HELD, which may be busy).
+        (`AMR_FLEET` available = idle and assignable robots and above the charge threshold; `ASRS` available = units not HELD, which may be busy).
       contentType: application/cloudevents+json
       x-no-consumer-reason: 'pending: wes-work-planning capacity consumer (plan 05b)'
       payload: {$ref: '#/components/schemas/SubsystemCapacityChangedEvent'}
@@ -285,11 +285,11 @@ components:
               required: [container_id, reason, detected_at_location, sent_at]
               properties:
                 container_id: {type: string, pattern: '^[A-Za-z0-9._-]{1,64}$'}
-                transport_order_id: {type: string, minLength: 1, maxLength: 128}
-                transport_request_id: {type: string, minLength: 1, maxLength: 128}
+                transport_order_id: {type: string, minLength: 1, maxLength: 128, description: 'The transport order whose leg found the problem; may name an internal clarification move, and then transport_request_id is absent'}
+                transport_request_id: {type: string, minLength: 1, maxLength: 128, description: 'The WES request of that transport; absent for an internal clarification move'}
                 reason: {type: string, enum: [NO_READ, MISMATCH, CONTAINER_NOT_AT_SOURCE, CONTAINER_NOT_AT_PORT, STORAGE_MAP_MISMATCH, CONTAINER_ON_FAILED_ROBOT]}
                 scanned_container_id: {type: string}
-                detected_at_location: {type: string}
+                detected_at_location: {type: string, description: 'The location code or station id where the problem was detected; for a container on a failed robot, the place the failed leg started from'}
                 clarification_point: {type: string, description: The clarification point's location code, set when the container is moved there}
                 sent_at: {type: string, format: date-time}
     SubsystemCapacityChangedEvent:
@@ -307,7 +307,7 @@ components:
                 | --- | --- | --- | --- |
                 | `subsystem_id` (subject `<kind>/<id>`) | `fleet_id` | `asrs_id` | station id |
                 | `units_total` | `robots_total` (0 accepted) | `units_total` (0 accepted, never sent) | `buffer_limit` |
-                | `units_available` = idle-and-dispatchable | `robots_available` (a robot runs one leg at a time) | `units_available` (an aisle unit queues jobs, so a not-HELD unit is dispatchable) | `buffer_limit - occupied` (min 0) |
+                | `units_available` = idle-and-dispatchable | `robots_available` (idle, assignable and above the charge threshold; a robot runs one leg at a time) | `units_available` (an aisle unit queues jobs, so a not-HELD unit is dispatchable) | `buffer_limit - occupied` (min 0) |
                 | `open_work` = queued + active | `legs_queued + legs_active` | `open_jobs` (queued and executing) | `occupied + waiting` |
                 | `status` UNAVAILABLE | `robots_online` = 0 (includes `robots_total` 0) | `units_available` = 0 | never |
                 | `status` DEGRADED | available < total | available < total | arrivals wait upstream |
