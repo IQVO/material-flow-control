@@ -32,8 +32,12 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     And the AS/RS presents "TOTE-3" at port "OUT1" with scan "READ"
     And a robot carries "TOTE-3" to "FWD1"
     Then transport "rq-4" is "COMPLETED"
+    And container "TOTE-3" is "AT_HANDOFF" at "WH1-FWD-FWD1"
     When the WES requests "TOTE-3" from "WH1-FWD-FWD1" to "WH1-AUTO-ASRS-ASRS1-00-00-S" for "RETURN" as "rq-5"
-    Then transport "rq-5" is "IN_PROGRESS"
+    And a robot carries "TOTE-3" to "ASRS1-IN1"
+    And the AS/RS stores "TOTE-3"
+    Then the events of "rq-5" are "TransportAccepted,TransportCompleted"
+    And container "TOTE-3" is "IN_ASRS" at "WH1-AUTO-ASRS-ASRS1-00-00-S"
 
   Scenario: Outbound to a pack station
     When the WES requests "O-1" from "ST1" to "WH1-PCK-PK1" for "OUTBOUND" as "rq-6"
