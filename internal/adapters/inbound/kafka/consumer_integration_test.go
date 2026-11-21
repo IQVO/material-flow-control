@@ -72,6 +72,12 @@ func TestARealBrokerRetriesATransientFailureCommitsAfterItAndDeadLettersPoison(t
 	if r.count() != 1 || r.ids[0] != "e-good" || len(dead) != 1 {
 		t.Fatalf("applied %v, dead-lettered %d", r.ids, len(dead))
 	}
+	// carry (Task 15 review): the dead letter is the poison message itself, with its source and cause.
+	cause := testConsumer(AsrsHandlers(&recorder{})).HandleMessage(context.Background(), poison)
+	if dead[0].Key != "sj-1" || string(dead[0].Value) != string(poison) || dead[0].Headers["x-dlq-source-topic"] != topic ||
+		dead[0].Headers["x-dlq-source-offset"] != "0" || cause == nil || dead[0].Headers["x-dlq-error"] != cause.Error() {
+		t.Fatalf("dead letter key %q, value %s, headers %v (want the cause %v)", dead[0].Key, dead[0].Value, dead[0].Headers, cause)
+	}
 
 	again := kafkago.NewReader(readerConfig(brokers, topic, group))
 	defer func() { _ = again.Close() }()
