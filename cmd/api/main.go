@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -12,19 +13,26 @@ import (
 	"syscall"
 )
 
-func main() {
-	if err := runMain(); err != nil {
+func main() { os.Exit(boot(os.Stdout, os.Getenv)) }
+
+// boot runs the process and returns its exit code. ruling P4-R13: the JSON logger (default level)
+// exists before the configuration is read, so a boot error reaches the fleet log pipeline as one JSON
+// line naming every invalid or missing variable, and the exit code is 1.
+func boot(w io.Writer, getenv func(string) string) int {
+	slog.SetDefault(newLoggerTo(w, "info"))
+	if err := runMain(w, getenv); err != nil {
 		slog.Error("material-flow-control exited with error", "error", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
-func runMain() error {
-	cfg, err := loadConfig(os.Getenv)
+func runMain(w io.Writer, getenv func(string) string) error {
+	cfg, err := loadConfig(getenv)
 	if err != nil {
 		return err
 	}
-	log := newLogger(cfg.LogLevel)
+	log := newLoggerTo(w, cfg.LogLevel)
 	slog.SetDefault(log)
 	flush, err := startTelemetry(log, cfg)
 	if err != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/adapters/outbound/telemetry"
@@ -52,6 +51,3 @@ func newLoggerTo(w io.Writer, level string) *slog.Logger {
 	}
 	return slog.New(telemetry.WithTraceContext(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lv})))
 }
-
-// newLogger is newLoggerTo on stdout.
-func newLogger(level string) *slog.Logger { return newLoggerTo(os.Stdout, level) }
