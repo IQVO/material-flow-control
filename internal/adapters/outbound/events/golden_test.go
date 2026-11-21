@@ -142,9 +142,23 @@ func TestNoEquipmentVocabularyReachesTheWes(t *testing.T) {
 		transportorder.TransportAccepted{OrderID: "to-1", RequestID: "r", ContainerID: "C", Source: "A", Destination: "B", At: t0, DueBy: due},
 		transportorder.TransportFailed{OrderID: "to-1", RequestID: "r", ContainerID: "C", Reason: transportorder.FailSubsystemFault, At: t0},
 		ct.ContainerSentToClarification{ContainerID: "C", Reason: ct.ReasonOnFailedRobot, DetectedAt: "AMR1", At: t0},
+		// carry (Task 17 review, P4-R11): all seven published types, so a field such as port_id on
+		// TransportRejected is caught too.
+		tr.TransportRejected{RequestID: "r", ContainerID: "C", Source: "A", Destination: "B", Purpose: tr.PurposePick,
+			Reason: tr.ReasonUnknownContainer, Detail: "d", At: t0},
+		transportorder.ContainerArrivedAtStation{OrderID: "to-1", RequestID: "r", ContainerID: "C", StationID: "ST1", At: t0, DueBy: due},
+		transportorder.TransportCompleted{OrderID: "to-1", RequestID: "r", ContainerID: "C", Destination: "ST1", At: t0},
+		capacity.SubsystemCapacityChanged{Snapshot: capacity.Fleet("AMR1", 2, 2, 1, 1, 1, 30, t0)},
 	}
 	if err := events.NewSink(out, ids()).Append(context.Background(), evs...); err != nil {
 		t.Fatal(err)
+	}
+	types := map[string]bool{}
+	for _, m := range out.msgs {
+		types[m.EventType] = true
+	}
+	if len(types) != 7 {
+		t.Fatalf("the vocabulary check saw %d published types, want all 7: %v", len(types), types)
 	}
 	for _, m := range out.msgs {
 		for k := range data(t, m) {
