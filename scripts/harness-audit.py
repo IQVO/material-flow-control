@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""harness-audit -- Phase 6 Task 6.2 of the harness-coverage-expansion plan.
+
+Reads each repo's origin/develop state (never a local working tree, which
+can be dirty/on an unrelated branch -- see warehouse-systems-fleet-ops
+skill's "Never trust a local checkout's working tree" lesson) and scores
+harness coverage per repo, per regulation category (maintainability /
+architecture fitness / behaviour), against the manifest below. Prints a
+per-repo report and a fleet-wide summary table.
+
+USAGE
+    python3 harness-audit.py [--repos-root ~/warehouse-systems] [--json]
+
+Exit code: 0 always (this is a REPORTING tool, not a gate -- it answers
+"which repo's harness is behind", it does not block anything. Run it via
+Hermes cron for a periodic drift report, per the plan's Task 6.2).
+
+WHY A MANIFEST, NOT A HARDCODED CHECK LIST
+Each sensor/guide is declared once below (name, category, how to detect
+it) instead of being open-coded inline, so the manifest and this script's
+logic stay separable -- extending coverage (a new sensor lands in the
+template) means adding one manifest entry, not touching detection logic
+scattered through the file.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+DEFAULT_REPOS = [
+    # Every non-archived IQVO repository except `.github` (the org profile). A static list: add a new repo here
+    # when it is created, or it is silently never audited. Refresh with
+    #   gh repo list IQVO --no-archived --limit 200 --json name -q '.[].name' | grep -vx .github | sort
+    "checkout",
+    "customer-ordering",
+    "customer-payments",
+    "delivery-promise",
+    "dock-scheduling",
+    "e2e-tests",
+    "ecosystem",
+    "exception-management",
+    "facility-layout",
+    "fulfillment-execution",
+    "inbound-receiving",
+    "inventory-storage",
+    "labor-performance",
+    "landing-page",
+    "last-mile-delivery",
+    "linehaul-transportation",
+    "network-fulfillment",
+    "network-inventory-planning",
+    "node-performance",
+    "node-topology",
+    "offer-availability",
+    "order-management",
+    "order-sourcing",
+    "outbound-shipping",
+    "payment-provider-simulator",
+    "pick-face-replenishment",
+    "pricing",
+    "process-path-management",
+    "product-content",
+    "product-discovery",
+    "product-master",
+    "provisioning",
+    "returns-processing",
+    "seller-inbound",
+    "shipping-and-tracking",
+    "shopping-cart",
+    "slotting-optimization",
+    "storefront-bff",
+    "storefront-web",
+    "task-interleaving",
+    "vendor-connectivity",
+    "warehouse-console",
+    "warehouse-docs",
+    "warehouse-floor-client",
+    "warehouse-harness-template",
+    "warehouse-infra",
+    "warehouse-ops-agent",
+    "warehouse-planning",
+    "warehouse-ui-kit",
+    "wes-work-planning",
+    "workforce-management",
+    "yard-management",
+]
+
+CATEGORY_MAINTAINABILITY = "maintainability"
+CATEGORY_ARCH_FITNESS = "architecture fitness"
+CATEGORY_BEHAVIOUR = "behaviour"
+
+
+@dataclass
+class ManifestItem:
+    name: str
+    category: str
+    # kind: "ci_job" checks .github/workflows/ci.yml for a top-level job
+    # key; "file" checks a file exists (git ls-tree; a symlink counts);
+    # "file_glob" checks at least one file matches a prefix; "guide_symlink"
+    # checks AGENTS.md is a symlink to CLAUDE.md or CLAUDE.md to AGENTS.md;
+    # "gremlins_plain" checks .gremlins.yaml's efficacy and mutant-coverage are plain
+    # numbers (gremlins reads a quoted string as 0, so the gate would never fail).
+    kind: str
+    target: str
+    # Only meaningful for ci_job: some sensors are legitimately absent in
+    # repos with no web/ or no chart -- caller passes has_web/has_chart to
+    # skip those without penalizing the denominator.
+    requires: str | None = None
+
+
+MANIFEST: list[ManifestItem] = [
+    # --- maintainability: computational sensors ---
+    ManifestItem("lint", CATEGORY_MAINTAINABILITY, "ci_job", "lint"),
+    ManifestItem("test+coverage", CATEGORY_MAINTAINABILITY, "ci_job", "test"),
+    ManifestItem("mutation-fast", CATEGORY_MAINTAINABILITY, "ci_job", "mutation-fast"),
+    ManifestItem("mutation (weekly)", CATEGORY_MAINTAINABILITY, "ci_job", "mutation"),
+    ManifestItem("vuln", CATEGORY_MAINTAINABILITY, "ci_job", "vuln"),
+    ManifestItem("api-lint", CATEGORY_MAINTAINABILITY, "ci_job", "api-lint"),
+    ManifestItem("docs-api-drift", CATEGORY_MAINTAINABILITY, "ci_job", "docs-api-drift"),
+    ManifestItem("drift (weekly)", CATEGORY_MAINTAINABILITY, "ci_job", "drift"),
+    ManifestItem("web", CATEGORY_MAINTAINABILITY, "ci_job", "web", requires="has_web"),
+    ManifestItem("helm-lint", CATEGORY_MAINTAINABILITY, "ci_job", "helm-lint", requires="has_chart"),
+    ManifestItem("trivy-scan", CATEGORY_MAINTAINABILITY, "ci_job", "trivy-scan"),
+    ManifestItem(".gremlins.yaml", CATEGORY_MAINTAINABILITY, "file", ".gremlins.yaml"),
+    ManifestItem("gremlins thresholds are plain numbers", CATEGORY_MAINTAINABILITY, "gremlins_plain", ".gremlins.yaml"),
+    ManifestItem("lefthook.yml", CATEGORY_MAINTAINABILITY, "file", "lefthook.yml"),
+    ManifestItem(".golangci.yml", CATEGORY_MAINTAINABILITY, "file", ".golangci.yml"),
+    # --- maintainability: guides (feedforward) ---
+    ManifestItem("AGENTS.md/CLAUDE.md", CATEGORY_MAINTAINABILITY, "file", "AGENTS.md"),
+    ManifestItem("CLAUDE.md", CATEGORY_MAINTAINABILITY, "file", "CLAUDE.md"),
+    # one real guide: AGENTS.md -> CLAUDE.md (or the reverse); two regular files drift apart (repo_lint R12)
+    ManifestItem("AGENTS.md symlink", CATEGORY_MAINTAINABILITY, "guide_symlink", "AGENTS.md"),
+    ManifestItem("INCIDENTS.md", CATEGORY_MAINTAINABILITY, "file", "INCIDENTS.md"),
+    ManifestItem("HARNESS.md", CATEGORY_MAINTAINABILITY, "file", "HARNESS.md"),
+    ManifestItem(".claude/rules/", CATEGORY_MAINTAINABILITY, "file_glob", ".claude/rules/"),
+    ManifestItem(".claude/skills/", CATEGORY_MAINTAINABILITY, "file_glob", ".claude/skills/"),
+    # --- architecture fitness ---
+    ManifestItem("arch-test CI job", CATEGORY_ARCH_FITNESS, "ci_job", "arch-test"),
+    ManifestItem("architecture_test.go", CATEGORY_ARCH_FITNESS, "file", "internal/architecture/architecture_test.go"),
+    ManifestItem("fitness_test.go (fleet invariants)", CATEGORY_ARCH_FITNESS, "file", "internal/architecture/fitness_test.go"),
+    ManifestItem("architecture-review skill (inferential review)", CATEGORY_ARCH_FITNESS, "file",
+                 ".claude/skills/architecture-review/SKILL.md"),
+    ManifestItem("agent hooks (scripts/harness/hook.py)", CATEGORY_ARCH_FITNESS, "file", "scripts/harness/hook.py"),
+    ManifestItem("guide-lint CI job", CATEGORY_MAINTAINABILITY, "ci_job", "guide-lint"),
+    # --- behaviour ---
+    ManifestItem("bdd CI job", CATEGORY_BEHAVIOUR, "ci_job", "bdd"),
+    ManifestItem("integration CI job", CATEGORY_BEHAVIOUR, "ci_job", "integration"),
+    ManifestItem("features/*.feature", CATEGORY_BEHAVIOUR, "file_glob", "features/"),
+]
+
+
+def run(cmd: list[str]) -> str:
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return result.stdout
+
+
+def repo_file_list(repo: Path, ref: str = "origin/develop") -> list[str]:
+    out = run(["git", "-C", str(repo), "ls-tree", "-r", "--name-only", ref])
+    return out.splitlines() if out else []
+
+
+def gremlins_thresholds_plain(content: str) -> bool:
+    """True when .gremlins.yaml sets efficacy and mutant-coverage as plain numbers.
+
+    gremlins reads the keys with a float type assertion: a quoted value is a string, comes out as 0 and
+    the gate never fails. Missing keys, quotes and unfilled placeholders all count as not plain.
+    """
+    found = {}
+    for line in content.splitlines():
+        m = re.match(r"^\s*(efficacy|mutant-coverage):\s*(\S+)", line)
+        if m:
+            found[m.group(1)] = m.group(2)
+    return set(found) == {"efficacy", "mutant-coverage"} and all(
+        re.fullmatch(r"\d+(\.\d+)?", v) for v in found.values()
+    )
+
+
+def repo_ci_jobs(repo: Path, ref: str = "origin/develop") -> set[str]:
+    """Top-level job keys under `jobs:` in .github/workflows/ci.yml."""
+    content = run(["git", "-C", str(repo), "show", f"{ref}:.github/workflows/ci.yml"])
+    if not content:
+        return set()
+    jobs: set[str] = set()
+    in_jobs = False
+    for line in content.splitlines():
+        if line.startswith("jobs:"):
+            in_jobs = True
+            continue
+        if not in_jobs:
+            continue
+        if line and not line.startswith(" ") and not line.startswith("#"):
+            break  # left the jobs: block
+        # a job key is exactly 2-space indented, ends with ':'
+        if line.startswith("  ") and not line.startswith("    ") and line.rstrip().endswith(":"):
+            key = line.strip().rstrip(":")
+            if key:
+                jobs.add(key)
+    return jobs
+
+
+def repo_symlinks(repo: Path, ref: str = "origin/develop") -> dict[str, str]:
+    """{path: link target} for the guide files committed as symlinks (git mode 120000)."""
+    out = run(["git", "-C", str(repo), "ls-tree", ref, "--", "AGENTS.md", "CLAUDE.md"])
+    links = {}
+    for line in out.splitlines():
+        meta, _, path = line.partition("\t")
+        if meta.startswith("120000 "):
+            links[path] = run(["git", "-C", str(repo), "show", f"{ref}:{path}"]).strip()
+    return links
+
+
+def guide_is_symlinked(links: dict[str, str], files: set[str]) -> bool:
+    """One real guide: AGENTS.md -> CLAUDE.md (CLAUDE.md a real file), or the reverse."""
+    return any(links.get(a) == b and b in files and b not in links
+               for a, b in (("AGENTS.md", "CLAUDE.md"), ("CLAUDE.md", "AGENTS.md")))
+
+
+def harness_template_version(repo: Path, ref: str = "origin/develop") -> str | None:
+    # `git show` of a symlink prints its TARGET ("CLAUDE.md"), not the guide: read the real file.
+    links = repo_symlinks(repo, ref)
+    content = ""
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        if name not in links:
+            content = run(["git", "-C", str(repo), "show", f"{ref}:{name}"])
+            if content:
+                break
+    # the same marker repo_lint R12 requires; a mention such as the scoped-rules comment is not a version
+    m = re.search(r"harness-template:\s*(v\d+)\b", content)
+    return f"harness-template: {m.group(1)}" if m else None
+
+
+@dataclass
+class RepoAudit:
+    name: str
+    present: list[str] = field(default_factory=list)
+    absent: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+    category_scores: dict[str, tuple[int, int]] = field(default_factory=dict)
+    harness_version: str | None = None
+
+
+def default_ref(repo: Path) -> str:
+    """origin/develop (GitFlow repos); repos that have no develop (warehouse-docs uses main) fall back to origin/main."""
+    for ref in ("origin/develop", "origin/main"):
+        if run(["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", ref]).strip():
+            return ref
+    return "origin/develop"
+
+
+def audit_repo(repo: Path) -> RepoAudit:
+    ref = default_ref(repo)
+    files = repo_file_list(repo, ref)
+    file_set = set(files)
+    ci_jobs = repo_ci_jobs(repo, ref)
+    links = repo_symlinks(repo, ref)
+    has_web = any(f.startswith("web/") for f in files)
+    has_chart = any(f.startswith("charts/") and f.endswith("Chart.yaml") for f in files)
+
+    audit = RepoAudit(name=repo.name)
+    audit.harness_version = harness_template_version(repo, ref)
+
+    category_counts: dict[str, list[int]] = {}  # category -> [present, total]
+
+    for item in MANIFEST:
+        if item.requires == "has_web" and not has_web:
+            audit.skipped.append(item.name)
+            continue
+        if item.requires == "has_chart" and not has_chart:
+            audit.skipped.append(item.name)
+            continue
+
+        if item.kind == "ci_job":
+            found = item.target in ci_jobs
+        elif item.kind == "file":
+            found = item.target in file_set
+        elif item.kind == "file_glob":
+            found = any(f.startswith(item.target) for f in files)
+        elif item.kind == "gremlins_plain":
+            found = item.target in file_set and gremlins_thresholds_plain(
+                run(["git", "-C", str(repo), "show", f"{ref}:{item.target}"]))
+        elif item.kind == "guide_symlink":
+            found = guide_is_symlinked(links, file_set)
+        else:
+            found = False
+
+        counts = category_counts.setdefault(item.category, [0, 0])
+        counts[1] += 1
+        if found:
+            counts[0] += 1
+            audit.present.append(item.name)
+        else:
+            audit.absent.append(item.name)
+
+    audit.category_scores = {cat: (p, t) for cat, (p, t) in category_counts.items()}
+    return audit
+
+
+def format_pct(present: int, total: int) -> str:
+    if total == 0:
+        return "n/a"
+    return f"{100 * present / total:.0f}%"
+
+
+def print_report(audits: list[RepoAudit]) -> None:
+    categories = [CATEGORY_MAINTAINABILITY, CATEGORY_ARCH_FITNESS, CATEGORY_BEHAVIOUR]
+
+    print("=" * 100)
+    print("harness-audit — fleet-wide harness coverage report")
+    print("=" * 100)
+
+    header = f"{'repo':<26}" + "".join(f"{c[:14]:<16}" for c in categories) + f"{'template':<12}"
+    print(header)
+    print("-" * len(header))
+    for a in audits:
+        row = f"{a.name:<26}"
+        for cat in categories:
+            p, t = a.category_scores.get(cat, (0, 0))
+            row += f"{format_pct(p, t):<16}"
+        row += f"{(a.harness_version or 'unversioned'):<12}"
+        print(row)
+
+    print()
+    print("=" * 100)
+    print("per-repo gaps (absent items)")
+    print("=" * 100)
+    for a in audits:
+        if not a.absent:
+            print(f"{a.name}: fully covered against the manifest")
+            continue
+        print(f"{a.name}:")
+        for item in a.absent:
+            print(f"  MISSING  {item}")
+        if a.skipped:
+            print(f"  (n/a, not applicable: {', '.join(a.skipped)})")
+    print()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repos-root", default=str(Path.home() / "warehouse-systems"))
+    parser.add_argument("--repos", nargs="*", default=DEFAULT_REPOS)
+    parser.add_argument("--json", action="store_true", help="emit JSON instead of the text report")
+    args = parser.parse_args()
+
+    root = Path(args.repos_root)
+    audits = []
+    for repo_name in args.repos:
+        repo_path = root / repo_name
+        if not (repo_path / ".git").exists():
+            print(f"::warning:: {repo_path} is not a git repo, skipping", file=sys.stderr)
+            continue
+        audits.append(audit_repo(repo_path))
+
+    if args.json:
+        out = [
+            {
+                "repo": a.name,
+                "harness_version": a.harness_version,
+                "category_scores": {
+                    cat: {"present": p, "total": t} for cat, (p, t) in a.category_scores.items()
+                },
+                "present": a.present,
+                "absent": a.absent,
+                "skipped": a.skipped,
+            }
+            for a in audits
+        ]
+        print(json.dumps(out, indent=2))
+    else:
+        print_report(audits)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
