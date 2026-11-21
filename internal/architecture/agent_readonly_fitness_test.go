@@ -16,6 +16,8 @@ package architecture
 //     so a missing adapter or cmd/ directory fails instead of passing vacuously.
 //   - TestAgentReadOnlySensorBites proves each rule fires on code fixtures, so the sensor cannot
 //     pass vacuously.
+//   - carry (Task 21 review): no write METHOD (agentWriteVerbs) is selected on any value, and no raw
+//     driver (pgx, database/sql) is imported; TestAgentReadOnlySensorRefusesWriteMethodsAndRawDrivers bites.
 
 import (
 	"go/ast"
@@ -97,6 +99,8 @@ func agentSourceViolations(s agentSurface, filename string, src any) ([]string, 
 	}
 	out := agentImportViolations(s, f)
 	out = append(out, agentSelectorViolations(f)...)
+	names, _ := agentQualifiers(f)
+	out = append(out, agentWriteMethodViolations(f, names)...) // carry (Task 21 review)
 	return append(out, agentReadsViolations(s, f)...), nil
 }
 
