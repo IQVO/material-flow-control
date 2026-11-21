@@ -196,7 +196,11 @@ func sameAnswer(a, b idempotency.IdempotencyRecord) bool {
 // to re-reading under the lock: the refusal rolled back every write and dropped every hook.
 func (m *Idempotency) finishRefused(w http.ResponseWriter, r *http.Request, key, fp string, out *capture) {
 	if out.code >= http.StatusInternalServerError || out.notStored {
-		if stored, found, err := m.Store.Lookup(r.Context(), key, m.notBefore()); err == nil && found {
+		stored, found, err := m.Store.Lookup(r.Context(), key, m.notBefore())
+		if err != nil {
+			// carry (Task 19 review): a failed re-read is logged; the request's own refusal still goes out.
+			m.Logger.WarnContext(r.Context(), "idempotency: re-read before an unstored refusal failed", "error", err)
+		} else if found {
 			replay(w, r, stored, fp)
 			return
 		}
