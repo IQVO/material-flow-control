@@ -1,7 +1,6 @@
 package a2a
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -223,23 +222,6 @@ func partJSON(part *a2a.Part) ([]byte, error) {
 	default:
 		return nil, errors.New("expected a data part (or a text part holding the skill JSON)")
 	}
-}
-
-// decodeStrict decodes one JSON document, refusing unknown fields and trailing data; absent arguments
-// decode as {} so the skill's own required checks speak.
-func decodeStrict(raw []byte, dst any) error {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		raw = []byte("{}")
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		return err
-	}
-	if dec.More() {
-		return errors.New("unexpected data after the JSON document")
-	}
-	return nil
 }
 
 // useCaseProblems names each typed error a read can meet with the SAME code the REST adapter puts in its
