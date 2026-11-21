@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
@@ -38,7 +39,10 @@ func New(baseURL string, timeout time.Duration, retryable []string) *Client {
 	}
 	// carry (Task 14 review): never follow a redirect; a 3xx reaches Do's ErrUnreachable branch.
 	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &Client{base: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: timeout, CheckRedirect: noRedirect}, retryable: r}
+	// carry (Task 14 review): the dispatcher calls from a background loop whose ctx has no span, so
+	// the otelhttp transport starts a client span per call and injects its traceparent.
+	hc := &http.Client{Timeout: timeout, CheckRedirect: noRedirect, Transport: otelhttp.NewTransport(http.DefaultTransport)}
+	return &Client{base: strings.TrimRight(baseURL, "/"), http: hc, retryable: r}
 }
 
 // Path joins escaped path segments: Path("asrs", id, "storage-jobs") is "/asrs/<id>/storage-jobs".
