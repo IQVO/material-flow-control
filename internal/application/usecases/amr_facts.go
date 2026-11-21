@@ -155,18 +155,24 @@ func endedOnRobot(fl *flow, o *transportorder.Order, f facts.LegFailed) error {
 	if f.Robot != "" {
 		t.MoveTo(containertrack.OnRobotOf(f.FleetID, f.Robot), fl.now)
 	}
+	// carry (Task 11 review): an internal order's container is already held (P4-R5) and has no re-request.
+	if o.Internal() {
+		return nil
+	}
+	// carry (Task 11 review): read the re-request BEFORE clarify, which may reserve the track for its own
+	// internal clarification order.
+	reReq := t.ActiveOrderID()
 	leg, _ := o.LegByRef(f.Reference)
 	if err := fl.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, leg.From, transportorder.FailSubsystemFault, f.Reason); err != nil {
 		return err
 	}
-	return failReRequest(fl, t, o.ID())
+	return failReRequest(fl, reReq, o.ID())
 }
 
 // failReRequest ends the order that re-requested a container which is in fact on a robot and now held
 // (responsibility 4: a held container is never dispatched): FAILED CLARIFICATION, best-effort CANCEL_LEG.
-// carry (Task 11 review)
-func failReRequest(fl *flow, t *containertrack.Track, endedID string) error {
-	id := t.ActiveOrderID()
+// carry (Task 11 review): id is the track's active order read before clarify.
+func failReRequest(fl *flow, id, endedID string) error {
 	if id == "" || id == endedID {
 		return nil
 	}
