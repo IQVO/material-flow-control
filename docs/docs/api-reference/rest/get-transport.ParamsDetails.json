@@ -1,0 +1,1 @@
+{"parameters":[{"name":"transportRequestId","in":"path","required":true,"description":"The caller's transport request id.","schema":{"type":"string","minLength":1,"maxLength":128,"description":"No control characters.","title":"Id"}}]}

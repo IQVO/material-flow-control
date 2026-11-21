@@ -1,0 +1,70 @@
+---
+id: get-station
+title: "Read a station queue"
+description: "The station's buffer limit, its occupants in arrival order and the transports waiting upstream in admission order (URGENT before NORMAL, then earlier `due_by`)."
+sidebar_label: "Read a station queue"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "get api-method"
+info_path: docs/api-reference/rest/material-flow-control
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Read a station queue"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/stations/{stationId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+The station's buffer limit, its occupants in arrival order and the transports waiting upstream in admission order (URGENT before NORMAL, then earlier `due_by`).
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+>
+  <Translate id="theme.openapi.request.title">Request</Translate>
+</Heading>
+
+<ParamsDetails
+  {...require("./get-station.ParamsDetails.json")}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./get-station.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./get-station.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

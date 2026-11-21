@@ -1,0 +1,1 @@
+{"parameters":[{"name":"Idempotency-Key","in":"header","required":true,"description":"Caller-minted key, 1 to 128 characters (fleet guideline R3-R5); a missing or longer one is `400 idempotency-key-required`.","schema":{"type":"string","minLength":1,"maxLength":128}}]}

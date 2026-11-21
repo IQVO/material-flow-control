@@ -1,0 +1,60 @@
+---
+id: readyz
+title: "Readiness"
+description: "200 when Postgres and Kafka are reachable; 503 while draining or while one is not."
+sidebar_label: "Readiness"
+hide_title: true
+hide_table_of_contents: true
+api: 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
+sidebar_class_name: "get api-method"
+info_path: docs/api-reference/rest/material-flow-control
+custom_edit_url: null
+hide_send_button: true
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+import Translate from "@docusaurus/Translate";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Readiness"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/readyz"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+200 when Postgres and Kafka are reachable; 503 while draining or while one is not.
+
+<ParamsDetails>
+  
+</ParamsDetails>
+
+<RequestSchema
+  {...require("./readyz.RequestSchema.json")}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  {...require("./readyz.StatusCodes.json")}
+>
+  
+</StatusCodes>
+
+
+      

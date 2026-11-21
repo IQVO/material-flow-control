@@ -1,3 +1,9 @@
+---
+id: index
+title: "Architecture Decision Records"
+slug: /
+---
+
 # Architecture Decision Records
 
 | ADR | Title | Status |
