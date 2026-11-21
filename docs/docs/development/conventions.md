@@ -37,7 +37,8 @@ that does not:
 | OUTCOME | yes, with its writes | the four rejections: the rejection record and `TransportRejected` commit WITH the stored answer |
 | RETRYABLE | no, the key is released | state-dependent refusals and not-founds the retry can outrun, 5xx |
 
-2xx answers are stored; 5xx answers and panics never are. The fleet rule is `docs/idempotency-replay-classes.md`.
+2xx answers are stored; 5xx answers and panics never are. The full catalogue and the corner cases are on
+[Replay classes](/docs/development/replay-classes).
 
 ## Events
 

@@ -31,7 +31,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Development',
-      items: ['development/testing', 'development/contributing', 'development/conventions'],
+      items: ['development/testing', 'development/contributing', 'development/conventions', 'development/replay-classes'],
     },
     {
       type: 'category',

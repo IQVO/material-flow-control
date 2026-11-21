@@ -33,4 +33,4 @@ Facts back on `warehouse.material-flow-control.events` (data fields; `*_at` this
 Rules for the caller (plan 05b): send `transport_request_id` derived from the task id AND the attempt (a rejected id stays rejected, D7); treat `422` as final for that id; never poll — drive the task from `TransportAccepted`, `ContainerArrivedAtStation`, `TransportCompleted`, `TransportFailed`; dispatch on the full CloudEvents `type`, dedupe on `id`; for `RETURN` write no stock transaction (seam decision 4).
 
 The replay classes, the stored-answer rules and the corner cases (a released key, in-flight duplicates) are on the
-[conventions page](/docs/development/conventions#replay-classes).
+[Replay classes](/docs/development/replay-classes) page.

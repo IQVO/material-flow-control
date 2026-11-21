@@ -59,7 +59,7 @@ alerting on:
 | `a pickup confirmation expired: the AS/RS port may stay blocked` | ERROR | a `CONFIRM_PICKUP` reached its deadline |
 | `dispatch failed`, `tick failed` | WARN | a dispatcher or tick pass failed; the next pass retries |
 | `consumer stopped` | ERROR | a consumer's run returned with an error |
-| `idempotency: re-read before an unstored refusal failed` | WARN | the key re-read before an unstored refusal failed; the request's own refusal went out |
+| `idempotency: re-read before an unstored refusal failed` | WARN | the key re-read before an unstored refusal failed ([Replay classes](/docs/development/replay-classes)); the request's own refusal went out |
 | `purge failed` | WARN | the hourly purge of `idempotency_keys` or `processed_events` failed |
 | `outbox relay: row reached the attempt cap and is excluded from future claims; re-arm it with attempts = 0 after fixing the cause` | ERROR | an outbox row failed `OUTBOX_MAX_ATTEMPTS` times |
 | `outbox gauges unavailable` | WARN | the gauges could not be registered; the boot continues |
