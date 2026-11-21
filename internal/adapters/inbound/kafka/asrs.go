@@ -8,7 +8,8 @@ import (
 	"github.com/IQVO/material-flow-control/internal/application/facts"
 )
 
-// The asrs-control payloads (apis/asyncapi.yaml at 007bf7b). plc_timestamp is ignored (tolerant reader).
+// The asrs-control payloads (contracts/asrs-control.asyncapi.yaml, pinned from asrs-control develop b23a5a2;
+// carry (Task 15 review)). plc_timestamp is ignored (tolerant reader).
 
 type containerStoredData struct {
 	StorageJobID string    `json:"storage_job_id"`

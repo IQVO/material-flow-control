@@ -1,11 +1,17 @@
-// Dead-letter handling for the domain consumers: a TRANSIENT failure is
-// retried a bounded number of times with capped backoff (consumeLoop's
-// policy), and only once that bound is exhausted is the message published to
-// "<topic>.dlq" with x-dlq-* headers, instead of blocking the partition
-// forever. A deterministic problem (not a CloudEvents 1.0 message, unknown
-// type, malformed payload, invalid values) never reaches this path: the
-// consumer's HandleMessage returns nil for those and the loop commits past
-// them.
+// Dead-letter handling for the domain consumers (carry (Task 15 review): the three paths):
+//   - a message that is not a CloudEvents 1.0 message, or whose type this
+//     consumer does not act on, is committed past: HandleMessage returns nil
+//     and it is never dead-lettered;
+//   - a message that can never be applied (a malformed payload, a missing
+//     required field, a value outside its enum) is errPoison: it is published
+//     to "<topic>.dlq" with x-dlq-* headers AT ONCE, without a retry, then
+//     committed past;
+//   - a TRANSIENT failure is retried with capped backoff (consumeLoop's
+//     policy) and dead-lettered only after domainMaxHandlerAttempts attempts,
+//     instead of blocking the partition forever.
+//
+// The dead-letter publish itself is retried until it succeeds or ctx ends,
+// and the offset is committed only after it.
 package kafka
 
 import (
