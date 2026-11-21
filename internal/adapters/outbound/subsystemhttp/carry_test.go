@@ -3,6 +3,7 @@ package subsystemhttp_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -43,6 +44,31 @@ func TestRequestTimeoutAndTooEarlyAreUnreachableNotRefusals(t *testing.T) {
 		var r *subsystem.Refusal
 		if !errors.Is(err, subsystem.ErrUnreachable) || errors.As(err, &r) {
 			t.Fatalf("%d = %v", status, err)
+		}
+	}
+}
+
+// carry (Task 14 review): both producers build a problem type as problemBaseURI + code, so a problem that names
+// only its type still classes by the slug; about:blank and an empty type keep the http-<status> fallback.
+func TestAProblemWithOnlyATypeIsClassedByTheTypeSlug(t *testing.T) {
+	cases := []struct {
+		body, code string
+		retryable  bool
+	}{
+		{`{"type":"https://errors.asrs-control.warehouse-systems.dev/storage-full","status":422}`, "storage-full", true},
+		{`{"type":"about:blank","status":422}`, "http-422", false},
+		{`{"type":"","status":422}`, "http-422", false},
+	}
+	for _, tc := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = io.WriteString(w, tc.body)
+		}))
+		t.Cleanup(srv.Close)
+		err := subsystemhttp.New(srv.URL, time.Second, []string{"storage-full"}).Do(context.Background(), http.MethodPost, "/x", "k", struct{}{}, nil)
+		var r *subsystem.Refusal
+		if !errors.As(err, &r) || r.Code != tc.code || r.Retryable != tc.retryable {
+			t.Fatalf("%s = %v", tc.body, err)
 		}
 	}
 }

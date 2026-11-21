@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -51,6 +52,7 @@ func Path(segments ...string) string {
 }
 
 type problem struct {
+	Type   string `json:"type"`
 	Code   string `json:"code"`
 	Detail string `json:"detail"`
 }
@@ -122,7 +124,26 @@ func (c *Client) refusal(status int, body []byte) error {
 	_ = json.Unmarshal(body, &p)
 	code := p.Code
 	if code == "" {
+		code = typeSlug(p.Type)
+	}
+	if code == "" {
 		code = fmt.Sprintf("http-%d", status)
 	}
 	return &subsystem.Refusal{Status: status, Code: code, Detail: p.Detail, Retryable: c.retryable[code]}
+}
+
+// typeSlug is the last path segment of a problem type URI ("" for an empty type or about:blank).
+// carry (Task 14 review): both producers build the type as problemBaseURI + code.
+func typeSlug(typ string) string {
+	if typ == "" || typ == "about:blank" {
+		return ""
+	}
+	u, err := url.Parse(typ)
+	if err != nil {
+		return ""
+	}
+	if slug := path.Base(u.Path); slug != "." && slug != "/" {
+		return slug
+	}
+	return ""
 }
