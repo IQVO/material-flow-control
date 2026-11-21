@@ -2,10 +2,13 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
   The WES asks for a transport over REST and learns its progress from events; the subsystems are the memory
   fakes and their facts are fed to the use cases the way the Kafka consumers feed them.
 
+  # carry (Task 12 review): each Scenario names the cross-context half it defers and its owner.
+
   Background:
     Given the example material-flow layout
 
   Scenario: Goods-to-person, then the return writes no stock fact
+    Deferred: the task becoming claimable, TaskCompleted and no stock transaction for the RETURN are fulfillment-execution's (plan 05b), proven end to end in plan 06.
     Given container "TOTE-1" is stored in the AS/RS
     When the WES requests "TOTE-1" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "ST1" for "PICK" as "rq-1"
     And the AS/RS presents "TOTE-1" at port "OUT1" with scan "READ"
@@ -21,6 +24,7 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     And no event names a robot, a node, a rack position or a leg
 
   Scenario: Putaway into the AS/RS
+    Deferred: inventory-storage showing the contents in the AS/RS location after TaskCompleted is plans 05a/05b, proven end to end in plan 06.
     When the WES requests "TOTE-2" from "WH1-RCV-DEC1" to "WH1-AUTO-ASRS-ASRS1-00-00-S" for "PUTAWAY" as "rq-3"
     And a robot carries "TOTE-2" to "ASRS1-IN1"
     And the AS/RS stores "TOTE-2"
@@ -28,6 +32,7 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     And container "TOTE-2" is "IN_ASRS" at "WH1-AUTO-ASRS-ASRS1-00-00-S"
 
   Scenario: Replenishment to the forward handoff, then the return
+    Deferred: the RELOCATE stock move after TaskCompleted is fulfillment-execution's and inventory-storage's (plan 05b), proven end to end in plan 06.
     Given container "TOTE-3" is stored in the AS/RS
     When the WES requests "TOTE-3" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "WH1-FWD-FWD1" for "REPLENISH" as "rq-4"
     And the AS/RS presents "TOTE-3" at port "OUT1" with scan "READ"
@@ -41,12 +46,14 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     And container "TOTE-3" is "IN_ASRS" at "WH1-AUTO-ASRS-ASRS1-00-00-S"
 
   Scenario: Outbound to a pack station
+    Deferred: the pack task becoming claimable is fulfillment-execution's (plan 05b), proven end to end in plan 06.
     When the WES requests "O-1" from "ST1" to "WH1-PCK-PK1" for "OUTBOUND" as "rq-6"
     And a robot carries "O-1" to "PK1"
     Then the events of "rq-6" are "TransportAccepted,TransportCompleted"
     And container "O-1" is "AT_HANDOFF" at "WH1-PCK-PK1"
 
   Scenario: A second request for a busy container is rejected
+    Deferred: the 422 CONTAINER_BUSY answer over HTTP is the REST adapter's (Task 18).
     Given container "TOTE-4" is stored in the AS/RS
     When the WES requests "TOTE-4" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "ST1" for "PICK" as "rq-7"
     And the WES requests "TOTE-4" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "ST1" for "PICK" as "rq-8"
@@ -54,6 +61,7 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     And 1 transport order exists for "TOTE-4"
 
   Scenario: A retried request returns the original outcome
+    Deferred: the replayed 202 over HTTP and the Idempotency-Key are the REST adapter's (Task 18).
     Given container "TOTE-5" is stored in the AS/RS
     When the WES requests "TOTE-5" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "ST1" for "PICK" as "rq-9"
     And the WES requests "TOTE-5" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "ST1" for "PICK" as "rq-9"
@@ -61,6 +69,7 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     And 1 transport order exists for "TOTE-5"
 
   Scenario: A no-read at a port sends the container to clarification
+    Deferred: the exception-management case is plan 05b's; a no-read from the real emulator is Task 25.
     Given container "TOTE-6" is stored in the AS/RS
     When the WES requests "TOTE-6" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "ST1" for "PICK" as "rq-10"
     And the AS/RS presents "TOTE-6" at port "OUT1" with scan "NO_READ"
@@ -72,6 +81,7 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     Then container "TOTE-6" is "AT_CLARIFICATION" at "WH1-CLR-CLR1"
 
   Scenario: Half the robots go offline and the capacity reflects it
+    Deferred: wes-work-planning releasing less goods-to-person work is plan 05b's; robots dropped by the real emulator are Task 25.
     Given the AMR fleet reports 4 robots, 4 online, 4 available
     When the AMR fleet reports 4 robots, 2 online, 2 available
     Then the last "AMR_FLEET" capacity is "DEGRADED" with 2 available
