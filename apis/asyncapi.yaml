@@ -150,9 +150,15 @@ components:
                     data: {container_id: TOTE-4, transport_order_id: to-4, transport_request_id: task-4.1, reason: MISMATCH, scanned_container_id: TOTE-9,
                            detected_at_location: WH1-AUTO-ASRS-ASRS1-01-00-OUT1, clarification_point: WH1-CLR-CLR1, sent_at: '2026-11-20T08:00:00Z'}}
     SubsystemCapacityChanged:
+      # carry (Task 7 review): the consumer branches on subsystem_kind (PLAN-05b input).
       title: Subsystem capacity changed
       summary: The aggregated capacity of the AMR fleet, an AS/RS or a station changed.
-      description: '`type` = `com.warehouse.wes.material-flow-control.subsystemcapacity.SubsystemCapacityChanged`; subject and key = `<subsystem_kind>/<subsystem_id>`. Published when any field other than `measured_at` changed, never periodically (ADR 0006).'
+      description: >-
+        `type` = `com.warehouse.wes.material-flow-control.subsystemcapacity.SubsystemCapacityChanged`; subject and key =
+        `<subsystem_kind>/<subsystem_id>`. Published when any field other than `measured_at` changed, never periodically
+        (ADR 0006). A consumer must branch on `subsystem_kind`: `buffer_limit`, `occupied` and `queue_depth` are meaningful only for `STATION` (0 for `AMR_FLEET` and `ASRS`),
+        and the units mean different things per kind, so never sum `units_available` or `open_work` across kinds
+        (`AMR_FLEET` available = idle and assignable robots; `ASRS` available = units not HELD, which may be busy).
       contentType: application/cloudevents+json
       x-no-consumer-reason: 'pending: wes-work-planning capacity consumer (plan 05b)'
       payload: {$ref: '#/components/schemas/SubsystemCapacityChangedEvent'}
