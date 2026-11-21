@@ -98,15 +98,18 @@ func run(w io.Writer, getenv func(string) string) error {
 	defer flush()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	reads, closeReads, err := buildReads(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	defer closeReads()
+	// carry (Task 20 review): bind first, so a busy address is the boot error before any migration or pool is
+	// set up; a failed buildReads closes the listener again.
 	ln, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {
 		return err
 	}
+	reads, closeReads, err := buildReads(ctx, cfg)
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
+	defer closeReads()
 	srv := &http.Server{Handler: newRouter(inboundmcp.Handler(inboundmcp.NewServer(inboundmcp.Deps{Reads: reads})), log, cfg.ServiceName),
 		ReadHeaderTimeout: 5 * time.Second}
 	log.Info("material-flow-control mcp listening (Streamable HTTP)", "addr", ln.Addr().String())
