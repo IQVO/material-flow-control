@@ -83,3 +83,59 @@ func TestALegFailedOffTheRobotAfterTheTimeoutChangesNothing(t *testing.T) {
 		t.Fatalf("track = %+v, events %+v", track.Snapshot(), e.events.All()[before:])
 	}
 }
+
+// carry (Task 11 review): the ended order's container was re-requested (rq-2 accepted at ST1) before the late
+// LegFailed CANCELLED with the container on the robot arrived. The container is held and on AMR1, so rq-2 can
+// never run (responsibility 4, D12): it fails CLARIFICATION at once, no leg is requested for it, and the track
+// is held with no active order.
+func TestALateOnRobotFailureFailsTheReRequestOfTheNowHeldContainer(t *testing.T) {
+	e := newEnv(t)
+	refA := e.timedOut()
+	vb := e.mustAccept("rq-2", "TOTE-1", "ST1", pack, tr.PurposeOutbound)
+	before, calls := len(e.events.All()), len(e.amr.Calls())
+	e.legFailed(refA, "TOTE-1", "CANCELLED", true)
+	evs := e.events.All()[before:]
+	if len(evs) != 2 {
+		t.Fatalf("events = %+v, want the hold then rq-2 failed", evs)
+	}
+	if sent, ok := evs[0].(ct.ContainerSentToClarification); !ok || sent.Reason != ct.ReasonOnFailedRobot {
+		t.Fatalf("first event = %+v", evs[0])
+	}
+	if f, ok := evs[1].(transportorder.TransportFailed); !ok || f.RequestID != "rq-2" || f.OrderID != vb.OrderID ||
+		f.Reason != transportorder.FailClarification || f.SubsystemReason != string(ct.ReasonOnFailedRobot) || f.ContainerLocation != "" {
+		t.Fatalf("second event = %+v", evs[1])
+	}
+	e.dispatch()
+	for _, c := range e.amr.Calls()[calls:] {
+		if c.Op == "RequestLeg" {
+			t.Fatalf("a leg was requested for a held container: %+v", c)
+		}
+	}
+	track, err := e.tracks.Get(ctx, "TOTE-1")
+	e.must(err)
+	if _, held := track.Clarification(); !held || track.ActiveOrderID() != "" || track.Position() != ct.OnRobotOf("AMR1", "EMU/R1") {
+		t.Fatalf("track = %+v", track.Snapshot())
+	}
+}
+
+// carry (Task 11 review): same, with rq-2's MOVE already requested at the AMR: it is cancelled best-effort.
+func TestALateOnRobotFailureCancelsTheReRequestsLegInFlight(t *testing.T) {
+	e := newEnv(t)
+	refA := e.timedOut()
+	e.mustAccept("rq-2", "TOTE-1", "ST1", pack, tr.PurposeOutbound)
+	e.dispatch()
+	inFlight, err := e.svc.OrderDetail(ctx, "rq-2")
+	e.must(err)
+	refB := inFlight.Legs[0].Ref
+	e.legFailed(refA, "TOTE-1", "CANCELLED", true)
+	e.dispatch()
+	c := e.amr.Calls()
+	if last := c[len(c)-1]; last.Op != "CancelLeg" || last.Key != "cancel-"+refB {
+		t.Fatalf("calls = %+v", c)
+	}
+	o, err := e.svc.OrderDetail(ctx, "rq-2")
+	e.must(err)
+	if o.Status != transportorder.StatusFailed || o.Reason != transportorder.FailClarification {
+		t.Fatalf("rq-2 = %s %s", o.Status, o.Reason)
+	}
+}

@@ -153,7 +153,28 @@ func endedOnRobot(fl *flow, o *transportorder.Order, f facts.LegFailed) error {
 	}
 	t.MoveTo(containertrack.OnRobotOf(f.FleetID, f.Robot), fl.now)
 	leg, _ := o.LegByRef(f.Reference)
-	return fl.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, leg.From, transportorder.FailSubsystemFault, f.Reason)
+	if err := fl.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, leg.From, transportorder.FailSubsystemFault, f.Reason); err != nil {
+		return err
+	}
+	return failReRequest(fl, t, o.ID())
+}
+
+// failReRequest ends the order that re-requested a container which is in fact on a robot and now held
+// (responsibility 4: a held container is never dispatched): FAILED CLARIFICATION, best-effort CANCEL_LEG.
+// carry (Task 11 review)
+func failReRequest(fl *flow, t *containertrack.Track, endedID string) error {
+	id := t.ActiveOrderID()
+	if id == "" || id == endedID {
+		return nil
+	}
+	b, err := fl.orderByID(id)
+	if err != nil {
+		return err
+	}
+	if cur, ok := b.Current(); ok && cur.SubsystemRef != "" {
+		fl.enqueue(b.ID(), cur.Ref, command.CancelLeg)
+	}
+	return fl.fail(b, transportorder.FailClarification, string(containertrack.ReasonOnFailedRobot))
 }
 
 func (s *Service) legFailed(fl *flow, o *transportorder.Order, leg transportorder.Leg, f facts.LegFailed) error {
