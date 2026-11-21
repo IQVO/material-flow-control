@@ -2,6 +2,7 @@ package amr_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -60,5 +61,32 @@ func TestALegAnswerWithoutAnIDIsUnreachable(t *testing.T) {
 	_, err = c.CancelLeg(context.Background(), "k", "AMR1", "leg-1")
 	if !errors.Is(err, subsystem.ErrUnreachable) || !strings.Contains(err.Error(), "/fleets/AMR1/legs/leg-1/cancellation answered no id") {
 		t.Fatalf("cancel = %v", err)
+	}
+}
+
+// carry (Task 19 review, plan 03 P3-R14): `reference` is optional and amr-fleet-control refuses reference ""
+// (Id minLength 1, bad-request 400 FINAL), so an empty reference is omitted from the LegRequest body.
+func TestAnEmptyReferenceIsOmittedFromTheLegRequest(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		bodies = append(bodies, b)
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"leg_id":"leg-1","status":"REQUESTED"}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := amr.New(srv.URL, time.Second)
+	for _, ref := range []string{"", "to-1.2.1"} {
+		if _, err := c.RequestLeg(context.Background(), "k-"+ref, "AMR1",
+			subsystem.LegRequest{ContainerID: "TOTE-1", From: "ASRS1-OUT1", To: "ST1", Reference: ref}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, has := bodies[0]["reference"]; has || len(bodies[0]) != 3 || bodies[0]["container_id"] != "TOTE-1" {
+		t.Fatalf("empty reference body = %v, want no reference key", bodies[0])
+	}
+	if bodies[1]["reference"] != "to-1.2.1" || len(bodies[1]) != 4 {
+		t.Fatalf("reference body = %v", bodies[1])
 	}
 }

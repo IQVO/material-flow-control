@@ -32,7 +32,8 @@ type legRequest struct {
 	ContainerID string `json:"container_id"`
 	From        string `json:"from_handoff_point_id"`
 	To          string `json:"to_handoff_point_id"`
-	Reference   string `json:"reference"`
+	// carry (Task 19 review, plan 03 P3-R14): optional; the producer refuses "" (Id minLength 1), so omit it.
+	Reference string `json:"reference,omitempty"`
 }
 
 type leg struct {
