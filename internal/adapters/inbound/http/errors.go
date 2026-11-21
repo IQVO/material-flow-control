@@ -49,8 +49,10 @@ var problemCatalogue = []struct {
 	{errInvalidParameter, invalidParameter},
 	{usecases.ErrInvalidRequest, invalidParameter},
 	{usecases.ErrRequestConflict, problem{http.StatusConflict, "transport-request-conflict", "The transport_request_id was used with another request", classFinal}},
-	{usecases.ErrRequestNotFound, problem{http.StatusNotFound, "transport-request-not-found", "Transport request not found", classFinal}},
-	{usecases.ErrTrackNotFound, problem{http.StatusNotFound, "container-track-not-found", "Container track not found", classFinal}},
+	// ruling P4-R12: RETRYABLE — the caller mints transport_request_id and a ContainerStored or an acceptance
+	// creates a track, so the target of a keyed POST can exist by the retry.
+	{usecases.ErrRequestNotFound, problem{http.StatusNotFound, "transport-request-not-found", "Transport request not found", classRetryable}},
+	{usecases.ErrTrackNotFound, problem{http.StatusNotFound, "container-track-not-found", "Container track not found", classRetryable}},
 	{usecases.ErrStationNotFound, problem{http.StatusNotFound, "station-not-found", "Station not found", classFinal}},
 	{usecases.ErrUnknownLocation, problem{http.StatusUnprocessableEntity, "unknown-location", "The location is not a place of this automation", classFinal}},
 	{usecases.ErrTransportEnded, problem{http.StatusConflict, "transport-ended", "The transport has ended", classRetryable}},

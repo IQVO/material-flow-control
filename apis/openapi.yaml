@@ -31,12 +31,14 @@ info:
     `transport_request_id`, derived from the task id and the attempt, to try again).
 
     **Replay classes** (every problem type declares one): FINAL — a function of the request alone, stored and
-    replayed (`bad-request`, `invalid-parameter`, `transport-request-conflict`, `transport-request-not-found`,
-    `container-track-not-found`, `station-not-found`, `unknown-location`, `idempotency-key-required`,
-    `idempotency-key-reused`); OUTCOME — the four rejections (`unknown-container`, `container-busy`,
-    `destination-unreachable`, `subsystem-unavailable`): the rejection record and `TransportRejected` commit WITH
+    replayed (`bad-request`, `invalid-parameter`, `transport-request-conflict`, `station-not-found`,
+    `unknown-location`, `idempotency-key-required`, `idempotency-key-reused`); OUTCOME — the four rejections
+    (`unknown-container`, `container-busy`, `destination-unreachable`, `subsystem-unavailable`): the rejection
+    record and `TransportRejected` commit WITH
     the stored answer, and a replay creates nothing; RETRYABLE — the key is released, so a retry under the same key
-    executes again (`transport-not-cancellable`, `transport-ended`, `not-in-clarification`, `internal-error`,
+    executes again (`transport-request-not-found`, `container-track-not-found` — the caller mints the
+    `transport_request_id` and a `ContainerStored` fact or an acceptance creates a track, so the target can exist
+    by the retry; `transport-not-cancellable`, `transport-ended`, `not-in-clarification`, `internal-error`,
     `dependency-unavailable`). 2xx answers are stored; 5xx answers and panics never are. Releasing a key means the
     same key with another body is a NEW request, not `idempotency-key-reused`.
 
@@ -144,7 +146,7 @@ paths:
           headers: {Idempotency-Replayed: {$ref: '#/components/headers/IdempotencyReplayed'}}
           content: {application/json: {schema: {$ref: '#/components/schemas/TransportOrder'}}}
         '400': {$ref: '#/components/responses/BadRequest', description: '`invalid-parameter`, `idempotency-key-required`. Replay class FINAL.'}
-        '404': {$ref: '#/components/responses/NotFound', description: '`transport-request-not-found`. Replay class FINAL.'}
+        '404': {$ref: '#/components/responses/NotFound', description: '`transport-request-not-found`. Replay class RETRYABLE (the key is released: the request may be created after this answer).'}
         '409':
           $ref: '#/components/responses/Conflict'
           description: '`transport-not-cancellable`, `transport-ended` — Replay class RETRYABLE (the key is released); `idempotency-key-reused` — Replay class FINAL.'
@@ -180,7 +182,7 @@ paths:
           headers: {Idempotency-Replayed: {$ref: '#/components/headers/IdempotencyReplayed'}}
           content: {application/json: {schema: {$ref: '#/components/schemas/ContainerTrack'}}}
         '400': {$ref: '#/components/responses/BadRequest', description: '`bad-request`, `invalid-parameter`, `idempotency-key-required`. Replay class FINAL.'}
-        '404': {$ref: '#/components/responses/NotFound', description: '`container-track-not-found`. Replay class FINAL.'}
+        '404': {$ref: '#/components/responses/NotFound', description: '`container-track-not-found`. Replay class RETRYABLE (the key is released: the track may be created after this answer).'}
         '409':
           $ref: '#/components/responses/Conflict'
           description: '`not-in-clarification` — Replay class RETRYABLE (the key is released); `idempotency-key-reused` — Replay class FINAL.'
@@ -231,7 +233,7 @@ components:
       description: '`bad-request`, `invalid-parameter`, `idempotency-key-required`. Replay class FINAL.'
       content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
     NotFound:
-      description: '`transport-request-not-found`, `container-track-not-found`, `station-not-found`. Replay class FINAL.'
+      description: '`transport-request-not-found`, `container-track-not-found` — Replay class RETRYABLE on the keyed routes (the id can be created later); `station-not-found` — read route only.'
       content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
     Conflict:
       description: '`transport-request-conflict`, `idempotency-key-reused` — Replay class FINAL; `transport-not-cancellable`, `transport-ended`, `not-in-clarification` — Replay class RETRYABLE.'

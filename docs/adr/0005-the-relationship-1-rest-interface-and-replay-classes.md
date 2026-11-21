@@ -18,9 +18,16 @@ refused at once, a `…/cancellation` sub-resource, every POST idempotent).
 2. Two idempotency layers: the fleet `Idempotency-Key` (24 h) and the domain key `transport_request_id`
    (responsibility 6: a retry returns the original outcome; the same id with another request is
    `409 transport-request-conflict`; a rejected id stays rejected).
-3. Replay classes: FINAL (malformed, purpose rule, conflict, not found, unknown location), OUTCOME (the four
-   rejections: the rejection record and `TransportRejected` commit WITH the stored answer — the middleware's
-   KeepWrites path), RETRYABLE (cancellation and clarification refusals that depend on state, 5xx: key released).
+3. Replay classes: FINAL (malformed, purpose rule, conflict, `station-not-found`, unknown location), OUTCOME (the
+   four rejections: the rejection record and `TransportRejected` commit WITH the stored answer — the middleware's
+   KeepWrites path), RETRYABLE (cancellation and clarification refusals that depend on state, the two not-founds
+   below, 5xx: key released).
+   Amended (ruling P4-R12): `transport-request-not-found` (cancellation) and `container-track-not-found`
+   (clarification resolution) are RETRYABLE, not FINAL. The fleet rule makes a 404 on a command's own target FINAL
+   only when the service mints the id and never deletes it. Here the caller mints `transport_request_id`, and a
+   `ContainerStored` fact or an acceptance creates a track, so either target can exist by the retry: a FINAL 404
+   would pin a cancellation that raced ahead of its request (or was retried after a request timeout) for 24 h
+   while the transport runs to completion.
 4. Cancellation `POST /transport-requests/{id}/cancellation`: `200` cancelled now, `202` asked of the subsystem,
    `409 transport-not-cancellable` (on a robot, or waiting on an AS/RS output port), `409 transport-ended`.
 5. Read routes (`GET` request, track, station, subsystems) exist for operators and agents, never for polling. No

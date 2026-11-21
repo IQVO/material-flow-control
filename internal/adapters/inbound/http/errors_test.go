@@ -11,7 +11,7 @@ import (
 
 func TestEveryProblemDeclaresItsReplayClass(t *testing.T) {
 	want := map[string]replayClass{"bad-request": classFinal, "invalid-parameter": classFinal, "transport-request-conflict": classFinal,
-		"transport-request-not-found": classFinal, "container-track-not-found": classFinal, "station-not-found": classFinal,
+		"transport-request-not-found": classRetryable, "container-track-not-found": classRetryable, "station-not-found": classFinal, // ruling P4-R12
 		"unknown-location": classFinal, "transport-ended": classRetryable, "transport-not-cancellable": classRetryable,
 		"not-in-clarification": classRetryable}
 	// Two errors share invalid-parameter, so the missing set is a copy (the brief deleted from want itself).
