@@ -65,6 +65,10 @@ func kafkaCheck(brokers []string) func(context.Context) error {
 }
 
 func (a *app) run(ctx context.Context, ln net.Listener) error {
+	// A failed listener ends the process too: cancelling run's own context stops every loop and
+	// consumer, as a signal would.
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
 	var loops sync.WaitGroup
 	for _, f := range a.loops {
 		loops.Go(func() { f(ctx) })
@@ -78,6 +82,7 @@ func (a *app) run(ctx context.Context, ln net.Listener) error {
 	case err = <-serveErr:
 	}
 	a.readiness.SetNotReady()
+	stop()
 	closed := a.closeConsumers(stopped)
 	drain, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

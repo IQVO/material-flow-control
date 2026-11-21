@@ -139,3 +139,29 @@ func TestAConsumerThatStoppedOnItsOwnIsClosedOnShutdown(t *testing.T) {
 		t.Fatalf("events = %v", got)
 	}
 }
+
+// A listener that fails ends the process: run cancels its own context so every loop and consumer
+// stops, and returns the serve error (the brief's run waited on loops that only a signal stopped).
+func TestAServeErrorStopsEveryLoopAndIsReturned(t *testing.T) {
+	ev := &journal{}
+	closing := make(chan string, 1)
+	a := &app{log: slog.New(slog.DiscardHandler), readiness: mfchttp.NewReadiness(time.Second, time.Second),
+		server:    &nethttp.Server{Handler: nethttp.NotFoundHandler(), ReadHeaderTimeout: time.Second},
+		consumers: []stoppable{fakeConsumer("asrs", ev, closing)},
+		loops:     []func(context.Context){func(ctx context.Context) { <-ctx.Done(); ev.add("loop stopped") }}}
+	ln := listen(t)
+	_ = ln.Close()
+	done := make(chan error, 1)
+	go func() { done <- a.run(context.Background(), ln) }()
+	select {
+	case err := <-done:
+		if err == nil || errors.Is(err, nethttp.ErrServerClosed) {
+			t.Fatalf("run = %v, want the listener's error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("run did not return after the listener failed; events %v", ev.list())
+	}
+	if got := ev.list(); len(got) != 2 {
+		t.Fatalf("events = %v, want the consumer closed and the loop stopped", got)
+	}
+}
