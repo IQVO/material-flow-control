@@ -45,6 +45,8 @@ type LegPlan struct {
 }
 
 // Plan returns the legs from src to dst.
+// carry (Task 3 review): src and dst must come from l.Resolve; Plan trusts its callers to pass members of l (an
+// unknown AS/RS or a hand-built Place may still get a route), and the use case rejects anything unresolvable first.
 func Plan(l *layout.Layout, src, dst layout.Place) ([]LegPlan, error) {
 	if src.Code == dst.Code {
 		return nil, ErrSamePlace
