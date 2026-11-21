@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/application/command"
+	"github.com/IQVO/material-flow-control/internal/application/facts"
 	ct "github.com/IQVO/material-flow-control/internal/domain/containertrack"
 	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
 	tr "github.com/IQVO/material-flow-control/internal/domain/transportrequest"
@@ -137,5 +138,31 @@ func TestALateOnRobotFailureCancelsTheReRequestsLegInFlight(t *testing.T) {
 	e.must(err)
 	if o.Status != transportorder.StatusFailed || o.Reason != transportorder.FailClarification {
 		t.Fatalf("rq-2 = %s %s", o.Status, o.Reason)
+	}
+}
+
+// carry (Task 11 review): an ended order's late failure holds the container on the live path's predicate
+// (container_on_robot or DROP_FAILED). A DROP_FAILED without the on-robot flag still holds it, on the named robot.
+func TestALateDropFailureAfterTheTimeoutHoldsTheContainer(t *testing.T) {
+	e := newEnv(t)
+	ref := e.timedOut()
+	e.legFailed(ref, "TOTE-1", "DROP_FAILED", false)
+	track, err := e.tracks.Get(ctx, "TOTE-1")
+	e.must(err)
+	if c, held := track.Clarification(); !held || c.Reason != ct.ReasonOnFailedRobot || track.Position() != ct.OnRobotOf("AMR1", "EMU/R1") {
+		t.Fatalf("track = %+v, want held %s on AMR1/EMU/R1", track.Snapshot(), ct.ReasonOnFailedRobot)
+	}
+}
+
+// carry (Task 11 review): on the robot but with no robot named, the container is held where the track last saw it.
+func TestALateOnRobotFailureWithoutARobotHoldsTheContainerInPlace(t *testing.T) {
+	e := newEnv(t)
+	ref := e.timedOut()
+	e.must(e.svc.OnLegFailed(ctx, e.id(), typeLegFailed, facts.LegFailed{LegID: "leg", FleetID: "AMR1", ContainerID: "TOTE-1",
+		Reference: ref, Reason: "CANCELLED", ContainerOnRobot: true}))
+	track, err := e.tracks.Get(ctx, "TOTE-1")
+	e.must(err)
+	if c, held := track.Clarification(); !held || c.Reason != ct.ReasonOnFailedRobot || track.Position() != (ct.Position{Kind: ct.AtStation, Code: "ST1"}) {
+		t.Fatalf("track = %+v, want held %s at ST1", track.Snapshot(), ct.ReasonOnFailedRobot)
 	}
 }

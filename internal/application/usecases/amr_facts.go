@@ -144,14 +144,17 @@ func (s *Service) OnLegFailed(ctx context.Context, eventID, eventType string, f 
 // CONTAINER_ON_FAILED_ROBOT; an already-held track keeps its first hold (ruling P4-R5). The order is unchanged.
 // carry (Task 10 review): decision D16, the track follows physical facts even for an ended order.
 func endedOnRobot(fl *flow, o *transportorder.Order, f facts.LegFailed) error {
-	if !o.Ended() || !f.ContainerOnRobot || f.Robot == "" {
+	// carry (Task 11 review): the live path's predicate (legFailed); the track moves only onto a named robot.
+	if !o.Ended() || (!f.ContainerOnRobot && f.Reason != "DROP_FAILED") {
 		return nil
 	}
 	t, err := fl.track(o.ContainerID())
 	if err != nil {
 		return err
 	}
-	t.MoveTo(containertrack.OnRobotOf(f.FleetID, f.Robot), fl.now)
+	if f.Robot != "" {
+		t.MoveTo(containertrack.OnRobotOf(f.FleetID, f.Robot), fl.now)
+	}
 	leg, _ := o.LegByRef(f.Reference)
 	if err := fl.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, leg.From, transportorder.FailSubsystemFault, f.Reason); err != nil {
 		return err
