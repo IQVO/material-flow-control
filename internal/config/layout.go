@@ -3,7 +3,9 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -51,21 +53,34 @@ type fileLayout struct {
 	} `yaml:"clarificationPoints"`
 }
 
-// LoadLayout reads and validates the layout file at path.
+// LoadLayout reads and validates the layout file at path; every error names the file (carry, Task 2 review).
 func LoadLayout(path string) (*layout.Layout, error) {
 	b, err := os.ReadFile(filepath.Clean(path)) //nolint:gosec // the layout path is operator-supplied configuration
 	if err != nil {
 		return nil, fmt.Errorf("read layout %s: %w", path, err)
 	}
-	return ParseLayout(b)
+	l, err := ParseLayout(b)
+	if err != nil {
+		return nil, fmt.Errorf("layout %s: %w", path, err)
+	}
+	return l, nil
 }
 
 // ParseLayout decodes (unknown keys are an error) and validates a layout document.
 func ParseLayout(b []byte) (*layout.Layout, error) {
+	// carry (Task 2 review): a file with no document (no bytes, only whitespace or comments) is "layout is empty",
+	// not the decoder's bare EOF.
+	empty := fmt.Errorf("%w: layout is empty", layout.ErrInvalid)
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil, empty
+	}
 	var f fileLayout
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
 	if err := dec.Decode(&f); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, empty
+		}
 		return nil, fmt.Errorf("decode layout: %w", err)
 	}
 	return layout.New(f.spec())
