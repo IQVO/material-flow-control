@@ -57,8 +57,25 @@ func (r *reader) num(name string, def int) int {
 	return n
 }
 
+// pos is num for a value that must be at least 1: an interval, timeout, deadline, batch or attempt cap of 0
+// would panic a ticker, disable a timeout or a cap, or end every leg at once. carry (Task 19 review);
+// ruling P4-R14 adds OUTBOX_MAX_ATTEMPTS.
+func (r *reader) pos(name string, def int) int {
+	v := r.str(name, "")
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		r.errs = append(r.errs, fmt.Errorf("%s must be a positive integer, got %q", name, v))
+		return def
+	}
+	return n
+}
+
+// dur is a positive duration in unit (pos).
 func (r *reader) dur(name string, def int, unit time.Duration) time.Duration {
-	return time.Duration(r.num(name, def)) * unit
+	return time.Duration(r.pos(name, def)) * unit
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
@@ -67,8 +84,8 @@ func loadConfig(getenv func(string) string) (config, error) {
 		LayoutFile: r.must("MFC_LAYOUT_FILE"), Addr: r.str("ADDR", ":8080"), LogLevel: r.str("LOG_LEVEL", "info"),
 		AsrsGroup:      r.str("MFC_ASRS_CONSUMER_GROUP", "material-flow-control.asrs-control-events"),
 		AmrGroup:       r.str("MFC_AMR_CONSUMER_GROUP", "material-flow-control.amr-fleet-control-events"),
-		OutboxInterval: r.dur("OUTBOX_INTERVAL_MS", 250, time.Millisecond), OutboxBatch: r.num("OUTBOX_BATCH", 100),
-		OutboxMaxAttempts: r.num("OUTBOX_MAX_ATTEMPTS", 20), SubsystemTimeout: r.dur("SUBSYSTEM_TIMEOUT_MS", 5000, time.Millisecond),
+		OutboxInterval: r.dur("OUTBOX_INTERVAL_MS", 250, time.Millisecond), OutboxBatch: r.pos("OUTBOX_BATCH", 100),
+		OutboxMaxAttempts: r.pos("OUTBOX_MAX_ATTEMPTS", 20), SubsystemTimeout: r.dur("SUBSYSTEM_TIMEOUT_MS", 5000, time.Millisecond),
 		DispatchPoll: r.dur("DISPATCH_POLL_MS", 200, time.Millisecond), TickInterval: r.dur("TICK_INTERVAL_MS", 1000, time.Millisecond),
 		ServiceName: r.str("OTEL_SERVICE_NAME", "material-flow-control"), ServiceVersion: r.str("SERVICE_VERSION", ""),
 		OTLPEndpoint: r.str("OTEL_EXPORTER_OTLP_ENDPOINT", "")}

@@ -59,3 +59,31 @@ func TestANonNumericTunableIsABootError(t *testing.T) {
 		t.Fatalf("negative = %v", err)
 	}
 }
+
+// carry (Task 19 review): an interval, timeout or deadline of 0 is a boot error naming it (time.NewTicker
+// panics on 0; an http.Client Timeout of 0 means no timeout; a 0 leg timeout fails every leg).
+func TestAZeroIntervalOrTimeoutIsABootError(t *testing.T) {
+	for _, name := range []string{"OUTBOX_INTERVAL_MS", "SUBSYSTEM_TIMEOUT_MS", "DISPATCH_POLL_MS", "TICK_INTERVAL_MS",
+		"LEG_REQUEST_DEADLINE_SECONDS", "LEG_TIMEOUT_SECONDS", "OUTBOX_BATCH"} {
+		m := full()
+		m[name] = "0"
+		if _, err := loadConfig(env(m)); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s=0: err = %v, want a boot error naming it", name, err)
+		}
+	}
+}
+
+// ruling P4-R14: OUTBOX_MAX_ATTEMPTS=0 would disable the relay's attempt cap, so it is a boot error; a
+// LEG_RETRY_LIMIT of 0 (never retry a failed leg) stays legitimate.
+func TestAZeroAttemptCapIsABootErrorAndAZeroRetryLimitIsNot(t *testing.T) {
+	m := full()
+	m["OUTBOX_MAX_ATTEMPTS"] = "0"
+	if _, err := loadConfig(env(m)); err == nil || !strings.Contains(err.Error(), "OUTBOX_MAX_ATTEMPTS must be a positive integer") {
+		t.Fatalf("OUTBOX_MAX_ATTEMPTS=0: err = %v, want a boot error naming it", err)
+	}
+	m = full()
+	m["LEG_RETRY_LIMIT"] = "0"
+	if c, err := loadConfig(env(m)); err != nil || c.UseCases.LegRetryLimit != 0 {
+		t.Fatalf("LEG_RETRY_LIMIT=0: %+v, %v, want accepted as 0", c.UseCases, err)
+	}
+}
