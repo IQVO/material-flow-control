@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -144,10 +145,30 @@ func (w *world) failed(id, reason string) error {
 	return nil
 }
 
+// requestOf is the request id a published event names. carry (Task 12 review): a type switch instead of matching
+// "RequestID:<id> " in the %+v text, which also matched nested values and depended on field order.
+func requestOf(ev any) (string, bool) {
+	switch e := ev.(type) {
+	case transportorder.TransportAccepted:
+		return e.RequestID, true
+	case transportorder.ContainerArrivedAtStation:
+		return e.RequestID, true
+	case transportorder.TransportCompleted:
+		return e.RequestID, true
+	case transportorder.TransportFailed:
+		return e.RequestID, true
+	case ct.ContainerSentToClarification:
+		return e.RequestID, true
+	case tr.TransportRejected:
+		return e.RequestID, true
+	}
+	return "", false
+}
+
 func (w *world) eventsOf(id, list string) error {
 	var got []string
 	for _, ev := range w.events.All() {
-		if strings.Contains(fmt.Sprintf("%+v", ev), "RequestID:"+id+" ") {
+		if rid, ok := requestOf(ev); ok && rid == id {
 			got = append(got, name(ev))
 		}
 	}
@@ -192,13 +213,20 @@ func (w *world) at(container, kind, code string) error {
 	return nil
 }
 
+// legRef matches a transport-order leg reference (<order>.<leg>.<attempt>, e.g. to-b-1.2.1). carry (Task 12 review):
+// the brief's "leg-" substring never matched a reference.
+var legRef = regexp.MustCompile(`\.\d+\.\d+\b`)
+
 func (w *world) noVocabulary() error {
 	for _, ev := range w.events.All() {
 		s := fmt.Sprintf("%+v", ev)
-		for _, word := range []string{"EMU/R1", "Robot:", "Node", "Aisle", "Slot", "sj-", "leg-"} {
+		for _, word := range []string{"EMU/R1", "Robot:", "Node", "Aisle", "Slot", "sj-"} {
 			if strings.Contains(s, word) {
 				return fmt.Errorf("%s carries %q: %s", name(ev), word, s)
 			}
+		}
+		if ref := legRef.FindString(s); ref != "" {
+			return fmt.Errorf("%s carries a leg reference %q: %s", name(ev), ref, s)
 		}
 	}
 	return nil
