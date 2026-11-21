@@ -6,7 +6,9 @@ package architecture
 //     layers, and nothing in internal/ depends on it (the MCP twin is TestMCPAdapterDependencyRule).
 //   - TestAgentSurfacesAreReadOnly: an ALLOWLIST sensor over each adapter and its cmd/ composition
 //     root. The adapter's `Reads` seam holds exactly the listed read methods; the only
-//     usecases/ports/postgres identifiers the sources may reference are the read ones; and no
+//     usecases/ports/postgres identifiers the sources may reference are the read ones (a qualifier is
+//     resolved through the file's imports to its import path, so an alias cannot launder a write seam,
+//     and a dot or aliased import of those three packages is itself refused); and no
 //     write-side adapter (Kafka, the Kafka consumers, outbox, events, the asrs-control and
 //     amr-fleet-control clients, the memory doubles), no sibling inbound adapter and no outbound A2A
 //     client is imported. Allowlist, not denylist: a new write use case is refused without having to
@@ -116,19 +118,69 @@ func agentImportViolations(s agentSurface, f *ast.File) []string {
 	return out
 }
 
+// agentGuardedPackages maps the import-path suffix of each guarded package to its allowlist key. carry (Task 20
+// review): the allowlist applies by IMPORT PATH, whatever local name a file binds the package to.
+var agentGuardedPackages = map[string]string{
+	"/internal/application/usecases":       "usecases",
+	"/internal/application/ports":          "ports",
+	"/internal/adapters/outbound/postgres": "postgres",
+}
+
+// guardedKey is the allowlist key of an import path, "" when the path is not a guarded package.
+func guardedKey(path string) string {
+	for suffix, key := range agentGuardedPackages {
+		if strings.HasSuffix(path, suffix) {
+			return key
+		}
+	}
+	return ""
+}
+
+// agentQualifiers resolves every local package name of f to its import path (the alias, or the last path
+// element), and refuses a dot or aliased import of a guarded package: a dot import hides every selector the
+// allowlist reads, and an alias only obscures which package a reader sees.
+func agentQualifiers(f *ast.File) (map[string]string, []string) {
+	names, out := map[string]string{}, []string(nil)
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		local := path[strings.LastIndex(path, "/")+1:]
+		if imp.Name != nil {
+			local = imp.Name.Name
+		}
+		if key := guardedKey(path); key != "" && imp.Name != nil && local != "_" {
+			if local == "." {
+				out = append(out, "dot-imports "+path+": a guarded package must be referenced as "+key+".<Name>")
+				continue
+			}
+			if local != key {
+				out = append(out, "imports "+path+" as "+local+": a guarded package must keep its name "+key)
+			}
+		}
+		names[local] = path
+	}
+	return names, out
+}
+
 func agentSelectorViolations(f *ast.File) []string {
-	var out []string
+	names, out := agentQualifiers(f)
 	ast.Inspect(f, func(n ast.Node) bool {
 		sel, ok := n.(*ast.SelectorExpr)
 		if !ok {
 			return true
 		}
 		pkg, ok := sel.X.(*ast.Ident)
-		if !ok {
+		if !ok || pkg.Obj != nil { // not a qualifier, or a variable declared in this file
 			return true
 		}
-		if allowed, guarded := agentAllowedSelectors[pkg.Name]; guarded && !slices.Contains(allowed, sel.Sel.Name) {
-			out = append(out, "references "+pkg.Name+"."+sel.Sel.Name+", which is not on the read-only allowlist")
+		key := pkg.Name // a qualifier no import binds (fixtures): judged by its name
+		if path, imported := names[pkg.Name]; imported {
+			key = guardedKey(path)
+		}
+		if allowed, guarded := agentAllowedSelectors[key]; guarded && !slices.Contains(allowed, sel.Sel.Name) {
+			out = append(out, "references "+pkg.Name+"."+sel.Sel.Name+" ("+key+"), which is not on the read-only allowlist")
 		}
 		return true
 	})
@@ -222,6 +274,13 @@ func TestAgentReadOnlySensorBites(t *testing.T) {
 		"the sibling MCP adapter": "package x\nimport _ \"github.com/IQVO/material-flow-control/internal/adapters/inbound/mcp\"\n",
 		"a write method on Reads": "package x\ntype Reads interface{ EquipmentUnits(); OrderDetail(); Station(); Subsystems(); Track(); Transport(); Cancel() }\n",
 		"a missing read method":   "package x\ntype Reads interface{ Transport() }\n",
+		// carry (Task 20 review): the allowlist resolves a qualifier through the file's imports, so a local
+		// alias or a dot import of a guarded package cannot launder a write seam past it.
+		"an aliased write use case": "package x\nimport uc \"" + modulePath + "/internal/application/usecases\"\nvar _ = uc.NewService\n",
+		"an aliased unit of work":   "package x\nimport pg \"" + modulePath + "/internal/adapters/outbound/postgres\"\nvar _ = pg.NewUnitOfWork\n",
+		"an aliased port":           "package x\nimport p \"" + modulePath + "/internal/application/ports\"\nvar _ = p.UnitOfWork\n",
+		"an aliased guarded import": "package x\nimport uc \"" + modulePath + "/internal/application/usecases\"\nvar _ = uc.NewReader\n",
+		"a dot import":              "package x\nimport . \"" + modulePath + "/internal/application/usecases\"\nvar _ = NewService\n",
 	}
 	for name, src := range bad {
 		if got, err := agentSourceViolations(a2aSurface, "fixture.go", src); err != nil || len(got) == 0 {
@@ -234,6 +293,14 @@ func TestAgentReadOnlySensorBites(t *testing.T) {
 		"type Reads interface{ Transport(); OrderDetail(); Track(); Station(); Subsystems(); EquipmentUnits() }\n"
 	if got, err := agentSourceViolations(a2aSurface, "fixture.go", good); err != nil || len(got) != 0 {
 		t.Errorf("false positive on the read wiring: %v (err=%v)", got, err)
+	}
+	// carry (Task 20 review): cmd/mcp's own aliases name packages the allowlist does not guard, and a guarded
+	// local NAME bound to another import path is not that package.
+	mcpWiring := "package x\nimport inboundmcp \"" + modulePath + "/internal/adapters/inbound/mcp\"\n" +
+		"import layoutconfig \"" + modulePath + "/internal/config\"\nimport usecases \"example.com/elsewhere/usecases\"\n" +
+		"var _ = inboundmcp.NewServer\nvar _ = layoutconfig.LoadLayout\nvar _ = usecases.NewService\n"
+	if got, err := agentSourceViolations(mcpSurface, "fixture.go", mcpWiring); err != nil || len(got) != 0 {
+		t.Errorf("false positive on cmd/mcp's aliased wiring: %v (err=%v)", got, err)
 	}
 	if got, _ := agentSourceViolations(mcpSurface, "fixture.go", "package x\nimport _ \"github.com/IQVO/material-flow-control/internal/adapters/inbound/a2a\"\n"); len(got) == 0 {
 		t.Error("the sensor does not flag the MCP sources importing the A2A adapter")
