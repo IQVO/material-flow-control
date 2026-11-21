@@ -14,13 +14,20 @@ import (
 // pgx pool and its transactions (Exec, Begin, BeginTx, CopyFrom, SendBatch). A verb list, not a type check: the
 // sensor parses (fixtures need no module to compile against), so a selector is judged by its name.
 //
+// carry (plan 03 Task 18 review): the pool's raw-SQL entry points are refused too (Query, QueryRow, Acquire,
+// AcquireFunc, AcquireAllIdle, Conn, PgConn, ExecParams, Hijack): a raw pool.Query runs ANY SQL in autocommit,
+// OUTSIDE the BEGIN READ ONLY every adapter transaction of postgres.NewReadOnlyPool opens (ruling P4-R17), so it
+// is a write seam. The only legit pool methods in agent sources are Close and Ping; the Reader's own reads go
+// through the postgres adapter, never a raw pool call.
+//
 // False-positive allowances, by design: a package-qualified FUNCTION is not a method and is judged by the
 // allowlist above instead (slices.Insert, slices.Delete, maps.DeleteFunc stay allowed; usecases/postgres
 // identifiers keep their allowlist). Anything else with one of these names is refused even when it is not a
 // database write (a sync.Mutex Lock, a strings.Builder-like Append): an agent source has no business with either,
 // and a real need adds its exact expression to agentWriteVerbAllowances with the reason.
 var agentWriteVerbs = []string{"Save", "Insert", "Exec", "Begin", "BeginTx", "CopyFrom", "SendBatch", "Enqueue",
-	"Append", "Lock", "Purge", "Delete", "Update"}
+	"Append", "Lock", "Purge", "Delete", "Update",
+	"Query", "QueryRow", "Acquire", "AcquireFunc", "AcquireAllIdle", "Conn", "PgConn", "ExecParams", "Hijack"}
 
 // agentWriteVerbAllowances maps an exact selector expression (types.ExprString) to why it is not a write. Empty:
 // no agent source needs one today.
@@ -53,7 +60,7 @@ func agentWriteMethodViolations(f *ast.File, names map[string]string) []string {
 		}
 		expr := types.ExprString(sel)
 		if _, allowed := agentWriteVerbAllowances[expr]; !allowed {
-			out = append(out, "selects "+expr+": "+sel.Sel.Name+" is a write method (the surface reads only)")
+			out = append(out, "selects "+expr+": "+sel.Sel.Name+" is a write method or raw SQL (the surface reads only)")
 		}
 		return true
 	})
@@ -77,6 +84,14 @@ func TestAgentReadOnlySensorRefusesWriteMethodsAndRawDrivers(t *testing.T) {
 		"a pgx import":                         "package x\nimport _ \"github.com/jackc/pgx/v5/pgxpool\"\n",
 		"a pgx root import":                    "package x\nimport _ \"github.com/jackc/pgx/v5\"\n",
 		"a database/sql import":                "package x\nimport _ \"database/sql\"\n",
+		// carry (plan 03 Task 18 review): raw SQL through the read-only pool runs autocommit OUTSIDE BEGIN READ ONLY.
+		"raw SQL through pool.Query":    "package x\n" + pg + "func f() { p, _ := postgres.NewReadOnlyPool(ctx, dsn); _, _ = p.Query(ctx, \"DELETE FROM transport_requests\") }\n",
+		"raw SQL through pool.QueryRow": "package x\n" + pg + "func f() { p, _ := postgres.NewReadOnlyPool(ctx, dsn); _ = p.QueryRow(ctx, \"UPDATE transport_requests SET status = 'x' RETURNING 1\") }\n",
+		"a pooled connection":           "package x\n" + pg + "func f() { p, _ := postgres.NewReadOnlyPool(ctx, dsn); c, _ := p.Acquire(ctx); _ = c.Conn().PgConn().ExecParams(ctx, \"DELETE FROM transport_requests\", nil, nil, nil, nil) }\n",
+	}
+	// carry (plan 03 Task 18 review): each pgx raw-SQL method, selected on any value.
+	for _, m := range []string{"Query", "QueryRow", "Acquire", "AcquireFunc", "AcquireAllIdle", "Conn", "PgConn", "ExecParams", "Hijack"} {
+		bad["the raw-SQL method "+m] = "package x\nfunc f(v pool) { _ = v." + m + " }\n"
 	}
 	for _, verb := range agentWriteVerbs {
 		bad["the write verb "+verb] = "package x\nfunc f(v repo) { _ = v." + verb + " }\n"
