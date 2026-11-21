@@ -26,8 +26,9 @@ securityContext:
   readOnlyRootFilesystem: true
   capabilities:
     drop: ["ALL"]
-# Longer than the HTTP drain (10 s) plus a relay pass and the consumers' close.
-terminationGracePeriodSeconds: 30
+# carry (Task 15 review): the worst shutdown is the 10 s HTTP drain overlapping the consumers' close and one relay
+# pass (Kafka writes: 10 s timeouts, 2 attempts), about 30 s; 45 adds a margin. The chart refuses less than 30.
+terminationGracePeriodSeconds: 45
 service:
   type: ClusterIP
   port: 80

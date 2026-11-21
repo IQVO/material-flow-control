@@ -71,6 +71,10 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if or (not .Values.subsystems.asrsControlUrl) (not .Values.subsystems.amrFleetControlUrl) -}}
 {{- fail "subsystems.asrsControlUrl and subsystems.amrFleetControlUrl are required" -}}
 {{- end -}}
+{{- /* carry (Task 15 review): the drain, the consumers' close and a relay pass need about 30 s. */ -}}
+{{- if lt (int .Values.terminationGracePeriodSeconds) 30 -}}
+{{- fail "terminationGracePeriodSeconds must be at least 30 (10 s HTTP drain overlapping the consumers' close and a relay pass)" -}}
+{{- end -}}
 {{- end -}}
 
 {{/* The comma-separated names of the enabled KongPlugins, for each route's konghq.com/plugins annotation. */}}
