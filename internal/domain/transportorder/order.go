@@ -280,7 +280,7 @@ func (o *Order) Fail(reason FailReason, subsystemReason, location string, at tim
 
 // RequestCancel decides a cancellation (decision D15): at once between legs at a handoff that is not an AS/RS
 // output port; ask the subsystem for a leg in flight before the pickup; refuse with the container on a robot or
-// on an output port.
+// on an output port (ruling P4-R6: whatever the status of a current leg starting there).
 func (o *Order) RequestCancel(at time.Time) (CancelDecision, Leg, error) {
 	if o.Ended() {
 		return "", Leg{}, ErrEnded
@@ -288,6 +288,10 @@ func (o *Order) RequestCancel(at time.Time) (CancelDecision, Leg, error) {
 	cur, _ := o.Current()
 	if o.s.CancelRequested {
 		return CancelAlreadyAsked, cur, nil
+	}
+	// ruling P4-R6: a leg not yet picked up from an AS/RS output port leaves the container on the port.
+	if cur.From.Kind == layout.PlacePort && cur.From.PortKind == layout.PortOutput {
+		return "", cur, ErrNotCancellable
 	}
 	switch cur.Status {
 	case LegPlanned, LegWaitingStation:

@@ -3,9 +3,14 @@ package usecases_test
 import (
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/IQVO/material-flow-control/internal/adapters/outbound/memory"
+	"github.com/IQVO/material-flow-control/internal/application/command"
 	"github.com/IQVO/material-flow-control/internal/application/usecases"
 	ct "github.com/IQVO/material-flow-control/internal/domain/containertrack"
+	"github.com/IQVO/material-flow-control/internal/domain/routing"
+	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
 	tr "github.com/IQVO/material-flow-control/internal/domain/transportrequest"
 )
 
@@ -37,5 +42,44 @@ func TestAnUnresolvableSourceOrDestinationIsUnreachableBeforeRouting(t *testing.
 	want := []string{"transportrequest.TransportRejected", "transportrequest.TransportRejected"}
 	if got := e.types(); !equal(got, want) {
 		t.Fatalf("events = %v", got)
+	}
+}
+
+// ruling P4-R6, use-case side: a transport whose container waits on the output port for its (admitted, PENDING)
+// MOVE answers ErrNotCancellable (REST 409 transport-not-cancellable) and queues no CANCEL_LEG.
+func TestCancellingAMoveFromAnOutputPortIsNotCancellable(t *testing.T) {
+	e := newEnv(t)
+	l := e.svc.Layout()
+	src, _ := l.Resolve(asrsLoc)
+	dst, _ := l.Resolve("ST1")
+	out1, _ := l.Resolve(out1Loc)
+	plan, err := routing.Plan(l, src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := tr.Request{ID: "rq-p", ContainerID: "TOTE-1", Source: asrsLoc, Destination: "ST1", Purpose: tr.PurposePick,
+		Priority: tr.PriorityNormal, DueBy: t0.Add(time.Hour)}
+	o, err := transportorder.Accept("to-p", req, src, dst, plan, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Next(t0)
+	if err := o.Presented("to-p.1.1", out1, t0); err != nil {
+		t.Fatal(err)
+	}
+	o.Next(t0)
+	if _, err := o.Admitted(t0); err != nil {
+		t.Fatal(err)
+	}
+	_ = e.orders.Insert(ctx, o)
+	_ = memory.NewRequests(e.store).Insert(ctx, tr.Accept(req, "to-p", t0))
+	if _, _, err := e.svc.CancelTransport(ctx, "rq-p"); !errors.Is(err, usecases.ErrNotCancellable) {
+		t.Fatalf("cancel with the container on OUT1 = %v, want ErrNotCancellable", err)
+	}
+	if c := e.pending(command.CancelLeg); len(c) != 0 {
+		t.Fatalf("cancel commands = %+v", c)
+	}
+	if got, _ := e.orders.Get(ctx, "to-p"); got.CancelRequested() {
+		t.Fatal("a refused cancellation was recorded")
 	}
 }
