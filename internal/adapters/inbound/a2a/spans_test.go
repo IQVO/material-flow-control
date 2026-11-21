@@ -1,6 +1,7 @@
 package a2a
 
 import (
+	"strings"
 	"testing"
 
 	"go.opentelemetry.io/otel"
@@ -57,4 +58,47 @@ func TestEverySkillRunIsOneSpanWithTheAuthority(t *testing.T) {
 		len(skills[1].Events()) != 1 || skills[1].Events()[0].Name != "exception" {
 		t.Errorf("the problem run = %+v %v", skills[1].Status(), skills[1].Events())
 	}
+}
+
+// carry (Task 21 review): the span name is low-cardinality: an id the card does not offer is named
+// "a2a.skill unknown", and the caller-chosen id appears nowhere on the span (name, attributes, status, events).
+func TestAnUnknownSkillIsOneLowCardinalitySpan(t *testing.T) {
+	sr := recordSpans(t)
+	raw := strings.Repeat("x", 200) + "-attacker-chosen"
+	if env, _ := send(t, agent(t, fakeReads{}), skill(raw, nil)); problemCode(env) != "unknown-skill" {
+		t.Fatalf("envelope = %v", env)
+	}
+	var skills []sdktrace.ReadOnlySpan
+	for _, s := range sr.Ended() {
+		if strings.HasPrefix(s.Name(), "a2a.skill") {
+			skills = append(skills, s)
+		}
+	}
+	if len(skills) != 1 || skills[0].Name() != "a2a.skill unknown" {
+		t.Fatalf("skill spans = %d (%v), want exactly one named a2a.skill unknown", len(skills), spanNames(skills))
+	}
+	s := skills[0]
+	if a := spanAttrs(s); a["a2a.skill"] != "unknown" || a["gen_ai.tool.name"] != "unknown" || a["warehouse.authority"] != "L1" {
+		t.Errorf("attributes = %v", a)
+	}
+	seen := s.Status().Description
+	for _, kv := range s.Attributes() {
+		seen += " " + kv.Value.String()
+	}
+	for _, ev := range s.Events() {
+		for _, kv := range ev.Attributes {
+			seen += " " + kv.Value.String()
+		}
+	}
+	if strings.Contains(seen, "attacker-chosen") || s.Status().Code != codes.Error {
+		t.Errorf("the span records the raw id or no error: status %+v, values %q", s.Status(), seen)
+	}
+}
+
+func spanNames(spans []sdktrace.ReadOnlySpan) []string {
+	out := make([]string, 0, len(spans))
+	for _, s := range spans {
+		out = append(out, s.Name())
+	}
+	return out
 }

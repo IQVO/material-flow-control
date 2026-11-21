@@ -19,7 +19,7 @@ import (
 	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
 )
 
-// tracerName is the instrumentation scope of the skill spans ("a2a.skill <id>").
+// tracerName is the instrumentation scope of the skill spans ("a2a.skill <id>", "a2a.skill unknown").
 const tracerName = "github.com/IQVO/material-flow-control/internal/adapters/inbound/a2a"
 
 // The skill ids on the Agent Card.
@@ -70,17 +70,37 @@ func answer(ctx context.Context, deps Deps, ec *a2asrv.ExecutorContext) a2a.Even
 	}
 	// carry (Task 20 review, MCP parity): one "a2a.skill <id>" span per run with the GenAI operation and the
 	// authority every skill declares; a problem answer records the error and marks the span Error.
-	ctx, span := otel.Tracer(tracerName).Start(ctx, "a2a.skill "+req.Skill, trace.WithAttributes(
-		attribute.String("a2a.skill", req.Skill), attribute.String("gen_ai.operation.name", "execute_tool"),
-		attribute.String("gen_ai.tool.name", req.Skill), attribute.String("warehouse.authority", authorityL1)))
+	// carry (Task 21 review): the span is named by a skill the card OFFERS, or "unknown"; the caller-chosen id
+	// is never recorded on it (no unbounded span names, no attacker text in telemetry).
+	label := spanSkill(req.Skill)
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "a2a.skill "+label, trace.WithAttributes(
+		attribute.String("a2a.skill", label), attribute.String("gen_ai.operation.name", "execute_tool"),
+		attribute.String("gen_ai.tool.name", label), attribute.String("warehouse.authority", authorityL1)))
 	defer span.End()
 	dto, p := run(ctx, deps, req)
 	if p != nil {
-		span.RecordError(errors.New(p.Code + ": " + p.Detail))
-		span.SetStatus(codes.Error, p.Code+": "+p.Detail)
+		desc := p.Code + ": " + p.Detail
+		if label == skillUnknown {
+			desc = p.Code // the detail quotes the raw id
+		}
+		span.RecordError(errors.New(desc))
+		span.SetStatus(codes.Error, desc)
 		return reply(ec, envelope{Skill: req.Skill, Problem: p}, p.summary())
 	}
 	return reply(ec, envelope{Skill: req.Skill, Data: &dto}, dto.summary)
+}
+
+// skillUnknown labels the span of a skill id the card does not offer.
+const skillUnknown = "unknown"
+
+// spanSkill is id when the card offers it, else skillUnknown.
+func spanSkill(id string) string {
+	switch id {
+	case skillTransportStatus, skillContainerPosition, skillStationQueue, skillSubsystemCapacity, skillEquipmentUnits:
+		return id
+	default:
+		return skillUnknown
+	}
 }
 
 func run(ctx context.Context, deps Deps, req skillRequest) (skillDTO, *problem) {
