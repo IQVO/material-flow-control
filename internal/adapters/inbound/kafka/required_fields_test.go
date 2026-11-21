@@ -11,7 +11,10 @@ import (
 	"maps"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
+
+	kafkago "github.com/segmentio/kafka-go"
 
 	"github.com/IQVO/material-flow-control/internal/application/facts"
 )
@@ -227,6 +230,25 @@ func TestAnAmrFactWithoutAnOptionalFieldIsStillApplied(t *testing.T) {
 			if err := testConsumer(AmrHandlers(r)).HandleMessage(context.Background(), withoutField(t, p, f)); err != nil || r.count() != 1 {
 				t.Fatalf("%s without %s: err %v, applied %d (want 1)", typ, f, err, r.count())
 			}
+		}
+	}
+}
+
+// carry (Task 16 review): a fact without its robot names the missing robot once in the dead letter's x-dlq-error.
+func TestAMissingRobotIsNamedOnceInTheDeadLetter(t *testing.T) {
+	fixtures := amrFixtures(t)
+	for _, typ := range []string{TypeLegAssigned, TypeContainerPickedUp, TypeLegCompleted} {
+		value := withoutField(t, fixtures[typ], "robot")
+		cause := testConsumer(AmrHandlers(&recorder{})).HandleMessage(context.Background(), value)
+		if !errors.Is(cause, errPoison) {
+			t.Fatalf("%s without robot: err = %v (want poison)", typ, cause)
+		}
+		w := &recordingWriter{}
+		if err := publishDeadLetter(context.Background(), w, AmrTopic+DLQSuffix, kafkago.Message{Topic: AmrTopic, Value: value}, cause); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := headerOf(w.written[0], "x-dlq-error"); strings.Count(got, "missing robot") != 1 {
+			t.Fatalf("%s x-dlq-error = %q, want one \"missing robot\"", typ, got)
 		}
 	}
 }

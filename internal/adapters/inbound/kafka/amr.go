@@ -24,6 +24,7 @@ type robotRef struct {
 }
 
 // check fails a robot that is absent when required, or present without its manufacturer or serial number.
+// carry (Task 16 review): it is the only check of a required robot, so a missing one is named once.
 func (r *robotRef) check(isRequired bool) error {
 	if r == nil {
 		if isRequired {
@@ -54,7 +55,7 @@ type legAssignedData struct {
 }
 
 func (d legAssignedData) check() error {
-	return errors.Join(required("leg_id", d.LegID, "fleet_id", d.FleetID, "container_id", d.ContainerID, "robot", d.Robot.id(), "assigned_at", d.AssignedAt,
+	return errors.Join(required("leg_id", d.LegID, "fleet_id", d.FleetID, "container_id", d.ContainerID, "assigned_at", d.AssignedAt,
 		"from_handoff_point_id", d.From, "to_handoff_point_id", d.To, "map_version", d.MapVersion), d.Robot.check(true))
 }
 
@@ -70,7 +71,7 @@ type containerPickedUpData struct {
 
 func (d containerPickedUpData) check() error {
 	return errors.Join(required("leg_id", d.LegID, "fleet_id", d.FleetID, "container_id", d.ContainerID, "from_handoff_point_id", d.From,
-		"robot", d.Robot.id(), "picked_up_at", d.PickedUpAt), d.Robot.check(true))
+		"picked_up_at", d.PickedUpAt), d.Robot.check(true))
 }
 
 type legCompletedData struct {
