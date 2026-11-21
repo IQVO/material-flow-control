@@ -2,12 +2,14 @@ package usecases
 
 import (
 	"context"
+	"errors"
 
 	"github.com/IQVO/material-flow-control/internal/application/command"
 	"github.com/IQVO/material-flow-control/internal/application/facts"
 	"github.com/IQVO/material-flow-control/internal/domain/capacity"
 	"github.com/IQVO/material-flow-control/internal/domain/containertrack"
 	"github.com/IQVO/material-flow-control/internal/domain/layout"
+	"github.com/IQVO/material-flow-control/internal/domain/routing"
 	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
 )
 
@@ -42,10 +44,7 @@ func (s *Service) OnContainerPickedUp(ctx context.Context, eventID, eventType st
 			return err
 		}
 		if o != nil {
-			_ = o.PickedUp(f.Reference, f.Robot, fl.now)
-			if known && from.Kind == layout.PlacePort && from.PortKind == layout.PortOutput {
-				fl.enqueue(o.ID(), f.Reference, command.ConfirmPickup)
-			}
+			s.pickedUpLeg(fl, eventType, o, f, known && from.Kind == layout.PlacePort && from.PortKind == layout.PortOutput)
 		}
 		if known && from.Kind == layout.PlaceStation {
 			if err := leaveStation(fl, from, f.ContainerID); err != nil {
@@ -54,6 +53,18 @@ func (s *Service) OnContainerPickedUp(ctx context.Context, eventID, eventType st
 		}
 		return fl.commit()
 	})
+}
+
+// pickedUpLeg records the pickup on the order's leg and confirms a pickup from an AS/RS output port. carry (Task 10
+// review): only a MOVE is picked up, so a pickup naming another kind of leg is logged and confirms nothing; a MOVE's
+// pickup is still confirmed when its order already ended (decision D16: the port is empty either way).
+func (s *Service) pickedUpLeg(fl *flow, eventType string, o *transportorder.Order, f facts.ContainerPickedUp, fromOutputPort bool) {
+	if errors.Is(o.PickedUp(f.Reference, f.Robot, fl.now), transportorder.ErrWrongLeg) {
+		s.skip(fl.ctx, eventType, "fact does not match the leg's kind", f.Reference)
+	}
+	if leg, ok := o.LegByRef(f.Reference); ok && leg.Kind == routing.KindMove && fromOutputPort {
+		fl.enqueue(o.ID(), f.Reference, command.ConfirmPickup)
+	}
 }
 
 // leaveStation frees the container's station slot and admits the next waiting order (decision D11). It is the
@@ -125,7 +136,12 @@ func (s *Service) OnLegFailed(ctx context.Context, eventID, eventType string, f 
 		if o == nil {
 			return fl.commit()
 		}
-		if o.LegFailed(f.Reference, fl.now) != nil {
+		// carry (Task 10 review): a LegFailed ends only a MOVE.
+		if err := o.LegFailedAs(f.Reference, fl.now, routing.KindMove); err != nil {
+			if errors.Is(err, transportorder.ErrWrongLeg) {
+				s.skip(ctx, eventType, "fact does not match the leg's kind", f.Reference)
+				return fl.commit()
+			}
 			if err := endedOnRobot(fl, o, f); err != nil {
 				return err
 			}

@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"errors"
 
 	"github.com/IQVO/material-flow-control/internal/application/facts"
 	"github.com/IQVO/material-flow-control/internal/domain/capacity"
@@ -91,7 +92,14 @@ func (s *Service) OnStorageJobFailed(ctx context.Context, eventID, eventType str
 		if err != nil {
 			return err
 		}
-		if o == nil || o.LegFailed(f.Reference, fl.now) != nil {
+		if o == nil {
+			return fl.commit()
+		}
+		// carry (Task 10 review): a StorageJobFailed ends only a RETRIEVE or a STORE.
+		if err := o.LegFailedAs(f.Reference, fl.now, routing.KindRetrieve, routing.KindStore); err != nil {
+			if errors.Is(err, transportorder.ErrWrongLeg) {
+				s.skip(ctx, eventType, "fact does not match the leg's kind", f.Reference)
+			}
 			return fl.commit()
 		}
 		leg, _ := o.LegByRef(f.Reference)

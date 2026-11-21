@@ -3,6 +3,7 @@ package transportorder
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/domain/layout"
@@ -190,6 +191,16 @@ func (o *Order) Stored(ref string, at time.Time) error {
 func (o *Order) LegFailed(ref string, at time.Time) error {
 	_, err := o.finish(ref, LegFailed, at)
 	return err
+}
+
+// LegFailedAs is LegFailed for a fact that ends only some kinds of leg (amr-fleet-control's LegFailed a MOVE,
+// asrs-control's StorageJobFailed a RETRIEVE or a STORE): a known leg of another kind is refused with ErrWrongLeg
+// and left unchanged, whether or not its order ended. carry (Task 10 review)
+func (o *Order) LegFailedAs(ref string, at time.Time, kinds ...routing.LegKind) error {
+	if l, ok := o.LegByRef(ref); ok && !slices.Contains(kinds, l.Kind) {
+		return ErrWrongLeg
+	}
+	return o.LegFailed(ref, at)
 }
 
 // RetryLeg adds the next attempt of a failed MOVE (decision D13), PENDING, right after the failed one.
