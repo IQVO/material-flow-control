@@ -202,7 +202,12 @@ func (t *Track) MoveTo(p Position, at time.Time) {
 }
 
 // SendToClarification puts the container on hold and returns the event.
+// ruling P4-R5: a track already held keeps its first hold (reason and Since unchanged) and the zero event is
+// returned, so one container raises one exception case.
 func (t *Track) SendToClarification(c Clarification, at time.Time) ContainerSentToClarification {
+	if t.s.Clarification != nil {
+		return ContainerSentToClarification{}
+	}
 	c.Since = at
 	t.s.Clarification, t.s.UpdatedAt = &c, at
 	return ContainerSentToClarification{ContainerID: t.s.ContainerID, OrderID: c.OrderID, RequestID: c.RequestID, Reason: c.Reason,

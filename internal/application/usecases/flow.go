@@ -225,6 +225,7 @@ func (f *flow) clarify(o *transportorder.Order, c containertrack.Clarification, 
 		return err
 	}
 	c.OrderID, c.RequestID, c.DetectedAt = o.ID(), o.RequestID(), at.Code
+	_, held := t.Clarification() // ruling P4-R5: an already-held container keeps its first hold and raises no event
 	ev := t.SendToClarification(c, f.now)
 	if err := f.fail(o, reason, sub); err != nil {
 		return err
@@ -244,7 +245,9 @@ func (f *flow) clarify(o *transportorder.Order, c containertrack.Clarification, 
 			}
 		}
 	}
-	f.events = append(f.events, ev)
+	if !held {
+		f.events = append(f.events, ev)
+	}
 	return nil
 }
 
