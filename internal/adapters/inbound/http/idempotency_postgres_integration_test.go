@@ -28,6 +28,8 @@ import (
 
 type pgAPI struct {
 	h     http.Handler
+	uow   *postgres.UnitOfWork
+	lock  *postgres.FlowLock
 	count func(t *testing.T, sql string) int
 	save  func(t *testing.T, tr *ct.Track)
 }
@@ -53,7 +55,9 @@ func newPostgresAPI(t *testing.T) *pgAPI {
 	}
 	idem := mfchttp.NewIdempotency(postgres.NewIdempotencyStore(pool), uow, clock)
 	return &pgAPI{
-		h: mfchttp.NewRouter(&mfchttp.Server{Service: svc, Idempotency: idem.Middleware}, discard),
+		h:    mfchttp.NewRouter(&mfchttp.Server{Service: svc, Idempotency: idem.Middleware}, discard),
+		uow:  uow,
+		lock: postgres.NewFlowLock(pool),
 		count: func(t *testing.T, sql string) int {
 			t.Helper()
 			var n int

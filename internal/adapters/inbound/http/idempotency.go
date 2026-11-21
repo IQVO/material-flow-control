@@ -187,8 +187,19 @@ func sameAnswer(a, b idempotency.IdempotencyRecord) bool {
 
 // finishRefused answers a rolled-back request: RETRYABLE and 5xx go out unstored (the key is
 // released); a FINAL refusal is stored on its own so the same key and body replay it.
+//
+// carry (Task 19 review, P3-R15b): an unstored refusal re-reads the key first. A copy that passed
+// the Lookup while the first copy was in flight waited on the flow lock and decided only after the
+// first committed (its answer and key row included), so a RETRYABLE refusal it reached (the hold
+// already lifted, the transport already ended) is answered by the stored answer instead: N copies
+// are one run and N-1 replays (another body: idempotency-key-reused). Re-reading here is equivalent
+// to re-reading under the lock: the refusal rolled back every write and dropped every hook.
 func (m *Idempotency) finishRefused(w http.ResponseWriter, r *http.Request, key, fp string, out *capture) {
 	if out.code >= http.StatusInternalServerError || out.notStored {
+		if stored, found, err := m.Store.Lookup(r.Context(), key, m.notBefore()); err == nil && found {
+			replay(w, r, stored, fp)
+			return
+		}
 		flush(w, out)
 		return
 	}
