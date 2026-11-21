@@ -12,8 +12,8 @@ package architecture
 //     write-side adapter (Kafka, the Kafka consumers, outbox, events, the asrs-control and
 //     amr-fleet-control clients, the memory doubles), no sibling inbound adapter and no outbound A2A
 //     client is imported. Allowlist, not denylist: a new write use case is refused without having to
-//     be named here first. A surface whose adapter AND cmd/ directories are both absent is not built
-//     yet (cmd/a2a lands in Task 21) and is reported, not checked; one without the other fails.
+//     be named here first. Both surfaces are built (carry, Task 20 review: no "not built yet" branch),
+//     so a missing adapter or cmd/ directory fails instead of passing vacuously.
 //   - TestAgentReadOnlySensorBites proves each rule fires on code fixtures, so the sensor cannot
 //     pass vacuously.
 
@@ -216,15 +216,12 @@ func agentReadsViolations(s agentSurface, f *ast.File) []string {
 
 func TestAgentSurfacesAreReadOnly(t *testing.T) {
 	for _, s := range agentSurfaces {
-		if !dirExists(s.adapterDir) && !dirExists(s.cmdDir) && s.name != "mcp" {
-			t.Logf("the %s surface is not built yet (neither %s nor %s exists): nothing to check", s.name, s.adapterDir, s.cmdDir)
-			continue
-		}
 		for _, dir := range []string{s.adapterDir, s.cmdDir} {
 			files := goFilesUnder(t, dir, false)
 			if len(files) == 0 {
 				t.Fatalf("no %s sources under %s; the sensor is looking in the wrong place", s.name, dir)
 			}
+			t.Logf("checking %d %s sources under %s", len(files), s.name, dir)
 			for _, path := range files {
 				for _, v := range agentFileViolations(t, s, path) {
 					t.Errorf("%s %s (ADR 0007: the %s surface is read-only)", path, v, s.name)
@@ -232,11 +229,6 @@ func TestAgentSurfacesAreReadOnly(t *testing.T) {
 			}
 		}
 	}
-}
-
-func dirExists(dir string) bool {
-	info, err := os.Stat(dir)
-	return err == nil && info.IsDir()
 }
 
 func agentFileViolations(t *testing.T, s agentSurface, path string) []string {
