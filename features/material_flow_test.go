@@ -157,6 +157,33 @@ func (w *world) eventsOf(id, list string) error {
 	return nil
 }
 
+// carry (Task 12 review): the clarification event's payload, not only its type name.
+func (w *world) sentToClarification(container, request, reason, point, detectedAt string) error {
+	for _, ev := range w.events.All() {
+		s, ok := ev.(ct.ContainerSentToClarification)
+		if ok && s.RequestID == request {
+			if s.ContainerID != container || string(s.Reason) != reason || s.ClarificationPoint != point || s.DetectedAt != detectedAt {
+				return fmt.Errorf("ContainerSentToClarification of %s = %+v", request, s)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no ContainerSentToClarification of %s", request)
+}
+
+// carry (Task 12 review): the reason on the published TransportFailed, not only on the transport view.
+func (w *world) failedEvent(request, reason string) error {
+	for _, ev := range w.events.All() {
+		if f, ok := ev.(transportorder.TransportFailed); ok && f.RequestID == request {
+			if string(f.Reason) != reason {
+				return fmt.Errorf("TransportFailed of %s = %+v", request, f)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no TransportFailed of %s", request)
+}
+
 func (w *world) at(container, kind, code string) error {
 	tv, err := w.svc.Track(context.Background(), container)
 	if err != nil || tv.Track.Position.Kind != ct.PositionKind(kind) || tv.Track.Position.Code != code {
@@ -243,6 +270,8 @@ func scenario(sc *godog.ScenarioContext) {
 	sc.Step(`^transport "([^"]*)" failed "([^"]*)"$`, w.failed)
 	sc.Step(`^the events of "([^"]*)" are "([^"]*)"$`, w.eventsOf)
 	sc.Step(`^container "([^"]*)" is "([^"]*)" at "([^"]*)"$`, w.at)
+	sc.Step(`^"([^"]*)" of "([^"]*)" is sent to clarification "([^"]*)" at "([^"]*)", detected at "([^"]*)"$`, w.sentToClarification)
+	sc.Step(`^the published TransportFailed of "([^"]*)" has reason "([^"]*)"$`, w.failedEvent)
 	sc.Step(`^no event names a robot, a node, a rack position or a leg$`, w.noVocabulary)
 	sc.Step(`^request "([^"]*)" is rejected "([^"]*)"$`, w.rejected)
 	sc.Step(`^(\d+) transport order exists for "([^"]*)"$`, w.ordersFor)

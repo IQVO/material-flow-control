@@ -65,9 +65,11 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     When the WES requests "TOTE-6" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "ST1" for "PICK" as "rq-10"
     And the AS/RS presents "TOTE-6" at port "OUT1" with scan "NO_READ"
     Then the events of "rq-10" are "TransportAccepted,ContainerSentToClarification,TransportFailed"
+    And "TOTE-6" of "rq-10" is sent to clarification "NO_READ" at "WH1-CLR-CLR1", detected at "WH1-AUTO-ASRS-ASRS1-01-00-OUT1"
+    And the published TransportFailed of "rq-10" has reason "CLARIFICATION"
     And transport "rq-10" failed "CLARIFICATION"
-    And a robot carries "TOTE-6" to "CLR1"
-    And container "TOTE-6" is "AT_CLARIFICATION" at "WH1-CLR-CLR1"
+    When a robot carries "TOTE-6" to "CLR1"
+    Then container "TOTE-6" is "AT_CLARIFICATION" at "WH1-CLR-CLR1"
 
   Scenario: Half the robots go offline and the capacity reflects it
     Given the AMR fleet reports 4 robots, 4 online, 4 available
