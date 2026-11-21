@@ -161,3 +161,23 @@ func TestReadOnlyListReadsReleaseTheirConnections(t *testing.T) {
 		t.Fatal("a write succeeded on the read-only pool after the list reads")
 	}
 }
+
+// carry (Task 23 review): a Query that fails before any row (a statement the server refuses at prepare) must end
+// its READ ONLY transaction, or each failure pins one connection until the pool is exhausted.
+func TestReadOnlyQueryErrorsReleaseTheirConnections(t *testing.T) {
+	ctx := context.Background()
+	_, ro := readOnlyPools(t)
+	q := postgres.QuerierFor(ctx, ro)
+	for i := 0; i < 3*postgres.MaxConns; i++ {
+		rctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		rows, err := q.Query(rctx, `SELEC 1`)
+		cancel()
+		if err == nil {
+			rows.Close()
+			t.Fatalf("query %d: a malformed statement was accepted", i)
+		}
+	}
+	if acquired := ro.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("%d connections still acquired after %d failed queries: the transaction of a failed Query never ended", acquired, 3*postgres.MaxConns)
+	}
+}
