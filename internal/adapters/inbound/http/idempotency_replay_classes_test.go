@@ -36,6 +36,7 @@ import (
 
 	ahttp "github.com/IQVO/material-flow-control/internal/adapters/inbound/http"
 	"github.com/IQVO/material-flow-control/internal/adapters/outbound/memory"
+	"github.com/IQVO/material-flow-control/internal/application/ports"
 	"github.com/IQVO/material-flow-control/internal/application/usecases"
 	"github.com/IQVO/material-flow-control/internal/config"
 )
@@ -506,7 +507,16 @@ type fixture struct {
 	h      http.Handler
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T) *fixture { return newFixtureWith(t, fixtureWiring{}) }
+
+// fixtureWiring wraps the unit of work, the flow lock and the idempotency store (nil: the plain memory ones).
+type fixtureWiring struct {
+	uow   func(ports.UnitOfWork) ports.UnitOfWork
+	lock  func(ports.FlowLock) ports.FlowLock
+	store func(ports.IdempotencyStore) ports.IdempotencyStore
+}
+
+func newFixtureWith(t *testing.T, w fixtureWiring) *fixture {
 	t.Helper()
 	l, err := config.LoadLayout("../../../../config/flow-layout.example.yaml")
 	if err != nil {
@@ -515,9 +525,20 @@ func newFixture(t *testing.T) *fixture {
 	s := memory.NewStore()
 	f := &fixture{t: t, clock: memory.NewClock(t0), events: memory.NewEvents(s), tracks: memory.NewTracks(s),
 		orders: memory.NewOrders(s), idem: memory.NewIdempotency(s)}
-	uow := memory.NewUnitOfWork(s)
+	var uow ports.UnitOfWork = memory.NewUnitOfWork(s)
+	var lock ports.FlowLock = memory.FlowLock{}
+	var store ports.IdempotencyStore = f.idem
+	if w.uow != nil {
+		uow = w.uow(uow)
+	}
+	if w.lock != nil {
+		lock = w.lock(lock)
+	}
+	if w.store != nil {
+		store = w.store(store)
+	}
 	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
-	f.svc, err = usecases.NewService(l, usecases.DefaultConfig(), usecases.Deps{UoW: uow, Lock: memory.FlowLock{},
+	f.svc, err = usecases.NewService(l, usecases.DefaultConfig(), usecases.Deps{UoW: uow, Lock: lock,
 		Requests: memory.NewRequests(s), Orders: f.orders, Tracks: f.tracks, Stations: memory.NewStations(s),
 		Capacities: memory.NewCapacities(s), Units: memory.NewUnits(s), Commands: memory.NewCommands(s), Inbox: memory.NewInbox(s),
 		Sink: f.events, Asrs: memory.NewAsrs(), Amr: memory.NewAmr(), Clock: f.clock, IDs: memory.NewIDs("to"),
@@ -525,7 +546,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mw := ahttp.NewIdempotency(f.idem, uow, f.clock).Middleware
+	mw := ahttp.NewIdempotency(store, uow, f.clock).Middleware
 	f.h = ahttp.WithPanicRoute(ahttp.NewRouter(&ahttp.Server{Service: f.svc, Idempotency: mw}, discard), mw)
 	return f
 }
@@ -541,6 +562,15 @@ func (f *fixture) do(path, key string, body any) (*httptest.ResponseRecorder, ma
 	req.Header.Set(idempotencyKeyHeader, key)
 	rec := httptest.NewRecorder()
 	f.h.ServeHTTP(rec, req)
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec, out
+}
+
+func (f *fixture) do2(method, path string) (*httptest.ResponseRecorder, map[string]any) {
+	f.t.Helper()
+	rec := httptest.NewRecorder()
+	f.h.ServeHTTP(rec, httptest.NewRequest(method, path, http.NoBody))
 	var out map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec, out

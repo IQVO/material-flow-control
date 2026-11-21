@@ -30,3 +30,9 @@ refused at once, a `…/cancellation` sub-resource, every POST idempotent).
 
 - plan 05b's adapter treats `422` as final for that id and sends a new id (task id + attempt) to try again.
 - A rejection is both an answer and a fact: the WES may act on either, and both say the same thing.
+- Lock order (Task 13 review): the Idempotency middleware's unit of work is the outermost one; the use case takes
+  the flow lock first and the key row is written only after the handler returned (a FINAL refusal's row on its
+  own, after the rollback), so no request holds a key row while it waits for the flow lock. Two requests under
+  one key that both pass the Lookup before either committed are serialized by the flow lock: the second runs,
+  loses the key at save time and rolls back everything it wrote, answering the first answer (same body) or
+  `409 idempotency-key-reused` (another body). The narrow cost: the loser's use case executes once, invisibly.
