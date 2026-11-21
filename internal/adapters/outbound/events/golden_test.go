@@ -149,7 +149,9 @@ func TestNoEquipmentVocabularyReachesTheWes(t *testing.T) {
 	for _, m := range out.msgs {
 		for k := range data(t, m) {
 			for _, word := range []string{"robot", "leg", "node", "shuttle", "aisle", "rack", "storage_job", "port"} {
-				if strings.Contains(k, word) {
+				// Deviation (Task 17): match whole snake_case words, not substrings: "port" is inside every
+				// "transport_*" field and "leg" inside the contract's "legs_planned" (a count, no leg identity).
+				if strings.Contains("_"+k+"_", "_"+word+"_") {
 					t.Fatalf("%s carries the equipment field %q (seam decision 3 rules)", m.EventType, k)
 				}
 			}
