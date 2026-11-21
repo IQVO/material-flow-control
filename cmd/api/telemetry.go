@@ -13,7 +13,7 @@ import (
 // stretch a shutdown past what the orchestrator waits for.
 const telemetryFlushTimeout = 5 * time.Second
 
-// startTelemetry brings OpenTelemetry up (ADR 0004) and returns the flush to defer. Export is
+// startTelemetry brings OpenTelemetry up (ADR 0007) and returns the flush to defer. Export is
 // non-blocking: an unreachable Collector costs telemetry, never availability. With no OTLP
 // endpoint nothing is installed and the flush does nothing. A failed flush is logged, never
 // returned, so a clean shutdown never looks like a crash. It must run before wire builds the

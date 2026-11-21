@@ -17,7 +17,7 @@ import (
 	ahttp "github.com/IQVO/material-flow-control/internal/adapters/inbound/http"
 )
 
-// The fleet middleware order (ADR 0004): otelchi opens a server span named after the chi route
+// The fleet middleware order (ADR 0007): otelchi opens a server span named after the chi route
 // pattern (one name per route, never per id), and the access log is written inside it.
 func TestEveryRequestIsAServerSpanNamedAfterItsRoutePatternAndIsLogged(t *testing.T) {
 	prev := otel.GetTracerProvider()
