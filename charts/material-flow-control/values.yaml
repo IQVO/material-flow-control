@@ -59,7 +59,8 @@ config:
   dispatchPollMs: 200
   tickIntervalMs: 1000
 # The material-flow layout (ADR 0002). Empty = the chart's files/flow-layout.yaml (a copy of
-# config/flow-layout.example.yaml, kept equal by the render test).
+# config/flow-layout.example.yaml, kept equal by the render test). carry (ruling P4-R4): that file holds EXAMPLE
+# place codes; a deployed layout uses the site's real facility-layout location codes.
 layout: ""
 otel:
   enabled: false
