@@ -6,6 +6,7 @@ package layout
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // ErrInvalid is wrapped by every layout validation error.
@@ -98,6 +99,18 @@ func invalid(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, args...))
 }
 
+// carry (Task 3 review): Resolve, ByHandoffPoint and Port compare exactly, so an id or location code with
+// surrounding whitespace would never match a request or a fact. checkTrimmed refuses one, naming the entry and
+// field; fields holds name, value pairs. A value that is only whitespace is left to the "required" checks.
+func checkTrimmed(entry string, fields ...string) error {
+	for i := 0; i+1 < len(fields); i += 2 {
+		if v := fields[i+1]; !blank(v) && v != strings.TrimSpace(v) {
+			return invalid("%s: %s %q has surrounding whitespace", entry, fields[i], v)
+		}
+	}
+	return nil
+}
+
 // New validates s and builds its lookups.
 func New(s Spec) (*Layout, error) {
 	if err := checkHeader(s); err != nil {
@@ -116,12 +129,18 @@ func New(s Spec) (*Layout, error) {
 			return nil, err
 		}
 	}
-	for _, h := range s.Handoffs {
+	for i, h := range s.Handoffs {
+		if err := checkTrimmed(fmt.Sprintf("handoffs[%d]", i), "locationCode", h.LocationCode, "handoffPointId", h.HandoffPointID); err != nil {
+			return nil, err
+		}
 		if err := l.addHandoff(h); err != nil {
 			return nil, err
 		}
 	}
-	for _, c := range s.ClarificationPoints {
+	for i, c := range s.ClarificationPoints {
+		if err := checkTrimmed(fmt.Sprintf("clarificationPoints[%d]", i), "locationCode", c.LocationCode, "handoffPointId", c.HandoffPointID); err != nil {
+			return nil, err
+		}
 		p := Place{Kind: PlaceClarification, Code: c.LocationCode, HandoffPointID: c.HandoffPointID}
 		if err := l.addAMRPlace(c.LocationCode, p); err != nil {
 			return nil, err
@@ -146,7 +165,7 @@ func checkHeader(s Spec) error {
 	if len(s.ClarificationPoints) == 0 {
 		return invalid("at least one clarification point is required")
 	}
-	return nil
+	return checkTrimmed("layout", "siteId", s.SiteID, "fleet.fleetId", s.Fleet.FleetID)
 }
 
 func (l *Layout) addRef(ref string, p Place) error {
@@ -182,6 +201,9 @@ func (l *Layout) addAsrs(i int, a Asrs) error {
 	if blank(a.AsrsID) || blank(a.LocationCode) {
 		return invalid("an AS/RS needs asrsId and locationCode (asrs[%d], asrsId %q, locationCode %q)", i, a.AsrsID, a.LocationCode)
 	}
+	if err := checkTrimmed(fmt.Sprintf("asrs[%d]", i), "asrsId", a.AsrsID, "locationCode", a.LocationCode); err != nil {
+		return err
+	}
 	if a.RetrievalsPerUnitHour < 1 {
 		return invalid("AS/RS %s: retrievalsPerUnitHour must be at least 1", a.AsrsID)
 	}
@@ -213,6 +235,10 @@ func (l *Layout) addPort(asrsID string, j int, p Port) error {
 	if blank(p.PortID) {
 		return invalid("AS/RS %s: a port needs portId (ports[%d], locationCode %q)", asrsID, j, p.LocationCode)
 	}
+	entry := fmt.Sprintf("AS/RS %s ports[%d]", asrsID, j)
+	if err := checkTrimmed(entry, "portId", p.PortID, "locationCode", p.LocationCode, "handoffPointId", p.HandoffPointID); err != nil {
+		return err
+	}
 	if p.Kind != PortInput && p.Kind != PortOutput {
 		return invalid("AS/RS %s port %s: kind must be INPUT or OUTPUT", asrsID, p.PortID)
 	}
@@ -234,6 +260,10 @@ func (l *Layout) addPort(asrsID string, j int, p Port) error {
 func (l *Layout) addStation(i int, st Station) error {
 	if blank(st.StationID) {
 		return invalid("a station needs stationId (stations[%d], locationCode %q)", i, st.LocationCode)
+	}
+	entry := fmt.Sprintf("stations[%d]", i)
+	if err := checkTrimmed(entry, "stationId", st.StationID, "locationCode", st.LocationCode, "handoffPointId", st.HandoffPointID); err != nil {
+		return err
 	}
 	if st.BufferLimit < 1 {
 		return invalid("station %s: bufferLimit must be at least 1", st.StationID)
