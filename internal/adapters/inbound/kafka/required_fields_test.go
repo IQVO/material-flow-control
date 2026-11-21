@@ -101,6 +101,15 @@ var amrRequired = map[string][]string{
 	TypeFleetCapacityChanged: {"fleet_id", "robots_total", "robots_online", "robots_available", "robots_charging", "robots_held", "legs_queued", "legs_active", "changed_at"},
 }
 
+// amrOptional is the rest of plan 03 Task 13's table: the `?` fields, each of which a fact may omit.
+// carry (Task 16 review)
+var amrOptional = map[string][]string{
+	TypeLegAssigned:       {"reference"},
+	TypeContainerPickedUp: {"reference", "robot_timestamp"},
+	TypeLegCompleted:      {"reference", "robot_timestamp"},
+	TypeLegFailed:         {"reference", "robot", "robot_error"},
+}
+
 func amrFixtures(t *testing.T) map[string]map[string]any {
 	t.Helper()
 	b, err := os.ReadFile("testdata/amr-fleet-control.examples.json")
@@ -200,4 +209,24 @@ func TestEveryPlan03LegFailedReasonIsAppliedAndAnUnknownOneIsPoison(t *testing.T
 		}
 	}
 	assertPoison(t, AmrHandlers, withField(t, p, "reason", "EXPLODED"), "LegFailed reason EXPLODED")
+}
+
+// carry (Task 16 review): a fact without one of its optional fields is still applied, once.
+func TestAnAmrFactWithoutAnOptionalFieldIsStillApplied(t *testing.T) {
+	fixtures := amrFixtures(t)
+	for typ, fields := range amrOptional {
+		p, ok := fixtures[typ]
+		if !ok {
+			t.Fatalf("no fixture of %s", typ)
+		}
+		for _, f := range fields {
+			if _, ok := p["data"].(map[string]any)[f]; !ok {
+				t.Fatalf("the %s fixture has no %s: removing it would prove nothing", typ, f)
+			}
+			r := &recorder{}
+			if err := testConsumer(AmrHandlers(r)).HandleMessage(context.Background(), withoutField(t, p, f)); err != nil || r.count() != 1 {
+				t.Fatalf("%s without %s: err %v, applied %d (want 1)", typ, f, err, r.count())
+			}
+		}
+	}
 }
