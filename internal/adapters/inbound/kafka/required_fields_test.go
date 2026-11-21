@@ -187,3 +187,17 @@ func withField(t *testing.T, p map[string]any, f string, v any) []byte {
 	}
 	return b
 }
+
+// carry (Task 16 review): every LegFailed reason of plan 03's Task 13 table is applied as is; any other is poison.
+func TestEveryPlan03LegFailedReasonIsAppliedAndAnUnknownOneIsPoison(t *testing.T) {
+	p := amrFixtures(t)[TypeLegFailed]
+	for _, reason := range []string{"CANCELLED", "ROBOT_BLOCKED", "ROBOT_FAULT", "ROBOT_OFFLINE", "ORDER_REJECTED", "PICK_FAILED", "DROP_FAILED",
+		"MAP_VERSION_RETIRED"} {
+		r := &recorder{}
+		err := testConsumer(AmrHandlers(r)).HandleMessage(context.Background(), withField(t, p, "reason", reason))
+		if err != nil || r.count() != 1 || r.calls[0].(facts.LegFailed).Reason != reason {
+			t.Fatalf("reason %s: err %v, calls %+v", reason, err, r.calls)
+		}
+	}
+	assertPoison(t, AmrHandlers, withField(t, p, "reason", "EXPLODED"), "LegFailed reason EXPLODED")
+}
