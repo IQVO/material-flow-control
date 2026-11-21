@@ -65,10 +65,14 @@ func (u *UnitOfWork) AfterCommit(ctx context.Context, fn func()) {
 	fn()
 }
 
-// queryFor returns the transaction carried by ctx, or pool.
+// queryFor returns the transaction carried by ctx, or pool (a READ ONLY transaction per statement on a
+// NewReadOnlyPool pool, ruling P4-R17).
 func queryFor(ctx context.Context, pool *pgxpool.Pool) querier {
 	if tx, ok := pgtx.From(ctx); ok {
 		return tx
+	}
+	if isReadOnly(pool) {
+		return readOnlyQuerier{pool: pool}
 	}
 	return pool
 }
@@ -99,9 +103,10 @@ const LockTimeout = "5s"
 const setLocalTimeouts = "SET LOCAL statement_timeout = '" + StatementTimeout + "'; SET LOCAL lock_timeout = '" + LockTimeout + "'"
 
 // begin starts a READ COMMITTED transaction with the timeouts set LOCAL to it: the only way this
-// adapter opens a transaction (UnitOfWork.Do, inTx, the relay's Drain).
+// adapter opens a transaction (UnitOfWork.Do, inTx, the relay's Drain, readOnlyQuerier). ruling P4-R17: on a
+// NewReadOnlyPool pool it is BEGIN READ ONLY (txOptions).
 func begin(ctx context.Context, pool *pgxpool.Pool) (pgx.Tx, error) {
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	tx, err := pool.BeginTx(ctx, txOptions(pool))
 	if err != nil {
 		return nil, err
 	}

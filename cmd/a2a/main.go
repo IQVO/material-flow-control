@@ -141,7 +141,7 @@ func buildReads(ctx context.Context, cfg config) (*usecases.Reader, func(), erro
 	if err := postgres.RunMigrations(cfg.MigrationsURL); err != nil {
 		return nil, nil, fmt.Errorf("migrations: %w", err)
 	}
-	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := postgres.NewReadOnlyPool(ctx, cfg.DatabaseURL) // ruling P4-R17: every transaction READ ONLY
 	if err != nil {
 		return nil, nil, fmt.Errorf("postgres: %w", err)
 	}

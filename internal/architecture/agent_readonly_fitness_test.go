@@ -73,8 +73,9 @@ var agentAllowedSelectors = map[string][]string{
 	"usecases": {"NewReader", "ReadDeps", "Reader", "DefaultConfig", "Config", "TransportView", "TrackView",
 		"ErrRequestNotFound", "ErrTrackNotFound", "ErrStationNotFound", "ErrInvalidRequest",
 		"ErrAsrsNotFound"}, // carry (Task 20 review): the read-only AS/RS lookup refusal
-	"postgres": {"MigrationsURL", "RunMigrations", "NewPool", "NewRequests", "NewOrders", "NewTracks", "NewStations",
-		"NewCapacities", "NewUnits"},
+	// ruling P4-R17: the read pool is NewReadOnlyPool (every transaction READ ONLY); NewPool is cmd/api's.
+	"postgres": {"MigrationsURL", "RunMigrations", "NewReadOnlyPool", "NewRequests", "NewOrders", "NewTracks",
+		"NewStations", "NewCapacities", "NewUnits"},
 }
 
 // agentForbiddenImports are import-path fragments no agent source may use, and why.
@@ -278,6 +279,8 @@ func TestAgentReadOnlySensorBites(t *testing.T) {
 		"an aliased port":           "package x\nimport p \"" + modulePath + "/internal/application/ports\"\nvar _ = p.UnitOfWork\n",
 		"an aliased guarded import": "package x\nimport uc \"" + modulePath + "/internal/application/usecases\"\nvar _ = uc.NewReader\n",
 		"a dot import":              "package x\nimport . \"" + modulePath + "/internal/application/usecases\"\nvar _ = NewService\n",
+		// ruling P4-R17: an agent's pool is read-only; cmd/api's read-write NewPool is refused.
+		"a read-write pool": "package x\nvar _ = postgres.NewPool\n",
 	}
 	for name, src := range bad {
 		if got, err := agentSourceViolations(a2aSurface, "fixture.go", src); err != nil || len(got) == 0 {

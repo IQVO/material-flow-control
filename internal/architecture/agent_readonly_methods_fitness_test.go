@@ -26,7 +26,7 @@ var agentWriteVerbs = []string{"Save", "Insert", "Exec", "Begin", "BeginTx", "Co
 // no agent source needs one today.
 var agentWriteVerbAllowances = map[string]string{}
 
-// agentRawDriverImports are refused outright: the read pool is built by postgres.NewPool only, so a raw driver
+// agentRawDriverImports are refused outright: the read pool is built by postgres.NewReadOnlyPool only, so a raw driver
 // import can only mean a second, unguarded way to the database.
 var agentRawDriverImports = []string{"github.com/jackc/pgx", "database/sql"}
 
@@ -38,7 +38,7 @@ func agentWriteMethodViolations(f *ast.File, names map[string]string) []string {
 		if path, err := strconv.Unquote(imp.Path.Value); err == nil {
 			for _, raw := range agentRawDriverImports {
 				if path == raw || strings.HasPrefix(path, raw+"/") {
-					out = append(out, "imports "+path+": a raw database driver (the read pool comes from postgres.NewPool only)")
+					out = append(out, "imports "+path+": a raw database driver (the read pool comes from postgres.NewReadOnlyPool only)")
 				}
 			}
 		}
@@ -88,7 +88,7 @@ func TestAgentReadOnlySensorRefusesWriteMethodsAndRawDrivers(t *testing.T) {
 	}
 	// The read wiring, package-qualified slice helpers and non-write methods stay allowed.
 	good := "package x\nimport \"slices\"\n" + pg +
-		"func f() { pool, _ := postgres.NewPool(ctx, dsn); defer pool.Close(); _ = pool.Ping(ctx)\n" +
+		"func f() { pool, _ := postgres.NewReadOnlyPool(ctx, dsn); defer pool.Close(); _ = pool.Ping(ctx)\n" +
 		"r := usecases.NewReader(usecases.ReadDeps{Requests: postgres.NewRequests(pool), Units: postgres.NewUnits(pool)})\n" +
 		"_, _ = r.Transport(ctx, id); _, _ = r.EquipmentUnits(ctx, id); s := slices.Insert(xs, 0, 1); _ = slices.Delete(s, 0, 1) }\n"
 	if got, err := agentSourceViolations(a2aSurface, "fixture.go", good); err != nil || len(got) != 0 {
