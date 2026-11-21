@@ -6,6 +6,7 @@ import (
 
 	"github.com/IQVO/material-flow-control/internal/application/command"
 	"github.com/IQVO/material-flow-control/internal/application/facts"
+	"github.com/IQVO/material-flow-control/internal/application/usecases"
 	ct "github.com/IQVO/material-flow-control/internal/domain/containertrack"
 	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
 	tr "github.com/IQVO/material-flow-control/internal/domain/transportrequest"
@@ -117,4 +118,63 @@ func TestALateOnRobotFailureOfAnEndedClarificationMoveOnlyMovesTheTrack(t *testi
 	if evs := e.events.All()[before:]; len(evs) != 0 {
 		t.Fatalf("events = %+v, want none", evs)
 	}
+}
+
+// carry (Task 12 review): ResolveClarification can lift the hold after an internal clarification order ended, and a
+// re-request can then reserve the container. A late on-robot failure of the ENDED internal order must hold the
+// container again (CONTAINER_ON_FAILED_ROBOT, decision D12) and fail the re-request (responsibility 4).
+func TestALateOnRobotFailureOfAnEndedClarificationMoveAfterAResolveHoldsAgain(t *testing.T) {
+	e := newEnv(t)
+	io := e.resolvedAfterATimedOutClarificationMove()
+	e.mustAccept("rq-2", "TOTE-1", clrLoc, asrsLoc, tr.PurposeReturn)
+	before := len(e.events.All())
+	e.legFailed(io.ID()+".1.1", "TOTE-1", "DROP_FAILED", true)
+	track, err := e.tracks.Get(ctx, "TOTE-1")
+	e.must(err)
+	if c, held := track.Clarification(); !held || c.Reason != ct.ReasonOnFailedRobot || c.OrderID != io.ID() || c.DetectedAt != out1Loc {
+		t.Fatalf("track = %+v, want held CONTAINER_ON_FAILED_ROBOT for %s at %s", track.Snapshot(), io.ID(), out1Loc)
+	}
+	if v, err := e.svc.Transport(ctx, "rq-2"); err != nil || v.Status != usecases.ViewFailed || v.Reason != string(transportorder.FailClarification) {
+		t.Fatalf("rq-2 = %+v %v, want FAILED CLARIFICATION", v, err)
+	}
+	if sent, failed := countHoldAndFail(e.events.All()[before:]); sent != 1 || failed != 1 {
+		t.Fatalf("events = %+v, want one ContainerSentToClarification and one TransportFailed", e.events.All()[before:])
+	}
+}
+
+// resolvedAfterATimedOutClarificationMove opens the internal clarification order of TOTE-1 with a NO_READ at OUT1,
+// lets Tick fail it TIMEOUT after dispatch and resolves the hold at the clarification point. It returns the order.
+func (e *env) resolvedAfterATimedOutClarificationMove() *transportorder.Order {
+	e.t.Helper()
+	e.stored("TOTE-1")
+	e.mustAccept("rq-1", "TOTE-1", asrsLoc, "ST1", tr.PurposePick)
+	e.dispatch()
+	o, err := e.svc.OrderDetail(ctx, "rq-1")
+	e.must(err)
+	e.presented(o.Legs[0].Ref, "TOTE-1", "OUT1", "NO_READ")
+	io := e.openInternal("TOTE-1")
+	if io == nil {
+		e.t.Fatal("no internal clarification order")
+	}
+	e.dispatch()
+	e.clock.Advance(900 * time.Second)
+	if n, err := e.svc.Tick(ctx); n != 1 || err != nil {
+		e.t.Fatalf("Tick = %d %v", n, err)
+	}
+	_, err = e.svc.ResolveClarification(ctx, "TOTE-1", clrLoc)
+	e.must(err)
+	return io
+}
+
+// countHoldAndFail counts the ContainerSentToClarification and TransportFailed events.
+func countHoldAndFail(evs []any) (sent, failed int) {
+	for _, ev := range evs {
+		switch ev.(type) {
+		case ct.ContainerSentToClarification:
+			sent++
+		case transportorder.TransportFailed:
+			failed++
+		}
+	}
+	return sent, failed
 }

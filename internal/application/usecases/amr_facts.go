@@ -155,17 +155,29 @@ func endedOnRobot(fl *flow, o *transportorder.Order, f facts.LegFailed) error {
 	if f.Robot != "" {
 		t.MoveTo(containertrack.OnRobotOf(f.FleetID, f.Robot), fl.now)
 	}
-	// carry (Task 11 review): an internal order's container is already held (P4-R5) and has no re-request.
-	if o.Internal() {
-		return nil
-	}
 	// carry (Task 11 review): read the re-request BEFORE clarify, which may reserve the track for its own
 	// internal clarification order.
 	reReq := t.ActiveOrderID()
 	leg, _ := o.LegByRef(f.Reference)
+	if o.Internal() {
+		return endedInternalOnRobot(fl, o, t, leg, reReq)
+	}
 	if err := fl.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, leg.From, transportorder.FailSubsystemFault, f.Reason); err != nil {
 		return err
 	}
+	return failReRequest(fl, reReq, o.ID())
+}
+
+// endedInternalOnRobot handles an ended internal (clarification) order whose container a robot still carries. A
+// held container keeps its first hold (P4-R5). carry (Task 12 review): ResolveClarification may have lifted the
+// hold after the internal order ended, so an un-held container is held CONTAINER_ON_FAILED_ROBOT again and the
+// order that re-requested it is failed (responsibility 4: a held container is never dispatched).
+func endedInternalOnRobot(fl *flow, o *transportorder.Order, t *containertrack.Track, leg transportorder.Leg, reReq string) error {
+	if _, held := t.Clarification(); held {
+		return nil
+	}
+	c := containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot, OrderID: o.ID(), DetectedAt: leg.From.Code}
+	fl.events = append(fl.events, t.SendToClarification(c, fl.now))
 	return failReRequest(fl, reReq, o.ID())
 }
 
