@@ -47,10 +47,15 @@ before a consumer under test is built. CI's `integration` job is their gate.
 
 ## The end-to-end test
 
-The end-to-end test (`cmd/api/e2e_subsystems_integration_test.go`) runs material-flow-control in-process against the
-REAL `asrs-control`, `amr-fleet-control` and `equipment-emulator` built from pinned commits, with Postgres, Kafka and
-Mosquitto in testcontainers, and no in-test subsystem fake. It lands once amr-fleet-control is merged; until then the
-amr-fleet-control client and consumer are tested against fixtures written from its interface table.
+:::note
+The end-to-end test is not in the repository yet (Task 25 of the build plan adds it). This section states what it
+will run.
+:::
+
+The end-to-end test (`cmd/api/e2e_subsystems_integration_test.go`) will run material-flow-control in-process against
+the REAL `asrs-control`, `amr-fleet-control` and `equipment-emulator` built from pinned commits, with Postgres, Kafka
+and Mosquitto in testcontainers, and no in-test subsystem fake. It lands once amr-fleet-control is merged; until then
+the amr-fleet-control client and consumer are tested against fixtures written from its interface table.
 
 ## Fitness tests (`internal/architecture`)
 

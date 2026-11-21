@@ -38,16 +38,25 @@ stateDiagram-v2
   ASSIGNED --> PICKED_UP: ContainerPickedUp (AMR)
   PICKED_UP --> DONE: LegCompleted (MOVE)
   REQUESTED --> DONE: ContainerPresentedAtPort READ (RETRIEVE) or ContainerStored (STORE)
-  PENDING --> FAILED: LegFailed or StorageJobFailed, a FINAL refusal, the request deadline
-  REQUESTED --> FAILED: LegFailed, StorageJobFailed, LEG_TIMEOUT
-  ASSIGNED --> FAILED: LegFailed, LEG_TIMEOUT
-  PICKED_UP --> FAILED: LegFailed, LEG_TIMEOUT
-  PLANNED --> CANCELLED: the order ended
-  PENDING --> CANCELLED: the order ended
+  PENDING --> FAILED: LegFailed or StorageJobFailed
+  REQUESTED --> FAILED: LegFailed or StorageJobFailed
+  ASSIGNED --> FAILED: LegFailed
+  PICKED_UP --> FAILED: LegFailed
+  PLANNED --> CANCELLED: the order failed
+  WAITING_STATION --> CANCELLED: the order failed
+  PENDING --> CANCELLED: the order failed
+  REQUESTED --> CANCELLED: the order failed
+  ASSIGNED --> CANCELLED: the order failed
+  PICKED_UP --> CANCELLED: the order failed
   DONE --> [*]
   FAILED --> [*]
   CANCELLED --> [*]
 ```
+
+Only a subsystem's failure fact ends a leg `FAILED` (`LegFailed` from amr-fleet-control, `StorageJobFailed` from
+asrs-control). When the order fails for any other reason (`LEG_TIMEOUT`, a FINAL refusal, the request deadline, a
+cancellation, another leg's failure), `Order.Fail` abandons every leg that has not ended: it ends `CANCELLED`, so
+`get_transport` and `transport_status` show a timed-out or refused leg as `CANCELLED`, not `FAILED`.
 
 Facts can arrive out of order: `ContainerPickedUp` or `LegCompleted` on a MOVE that is still `PENDING`, `REQUESTED`
 or `ASSIGNED` moves it straight on. A fact is matched by the leg reference `<orderId>.<seq>.<attempt>` and must fit the leg's kind (`Presented` a

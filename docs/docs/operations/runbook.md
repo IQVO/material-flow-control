@@ -72,11 +72,17 @@ FROM subsystem_commands WHERE status = 'PENDING' ORDER BY next_attempt_at, seq;
 ```
 
 A `PENDING` row with a growing `attempts` and a `last_error` is being retried (a RETRYABLE refusal, a 5xx, a timeout or
-a refused connection) under the same Idempotency-Key until its `deadline`; then it becomes `FAILED` and the transport
-fails `SUBSYSTEM_FAULT` with the subsystem's code in `subsystem_reason`. A FINAL refusal (`bad-request`,
-`invalid-parameter`, `asrs-not-found`, `unknown-port`, `wrong-port-kind`, `idempotency-key-reused`) fails at once and
-logs `a subsystem refused a leg for good: the layout and the subsystem disagree` at ERROR: the layout file and the
-subsystem's layout or map disagree. Fix the configuration; never edit the row.
+a refused connection) under the same Idempotency-Key until its `deadline`; then it becomes `FAILED`. A FINAL refusal
+(`bad-request`, `invalid-parameter`, `asrs-not-found`, `unknown-port`, `wrong-port-kind`, `idempotency-key-reused`)
+makes it `FAILED` at once. What follows depends on the row's `kind`:
+
+| `kind` | Past its `deadline` | FINAL refusal |
+| --- | --- | --- |
+| `REQUEST_LEG` | The transport fails `SUBSYSTEM_FAULT` with the last code (or `subsystem-unreachable`) in `subsystem_reason`. | The transport fails `SUBSYSTEM_FAULT` with the subsystem's code in `subsystem_reason`, and `a subsystem refused a leg for good: the layout and the subsystem disagree` is logged at ERROR: the layout file and the subsystem's layout or map disagree. |
+| `CANCEL_LEG` | The cancellation is recorded as refused (`CancelRefused`): the transport keeps running to its outcome. | The same (a not-cancellable code counts as FINAL here): the transport keeps running. |
+| `CONFIRM_PICKUP` | `a pickup confirmation expired: the AS/RS port may stay blocked` is logged at ERROR; the order is untouched. | `asrs-control refused a pickup confirmation` is logged at ERROR; the order is untouched. |
+
+Fix the configuration; never edit the row.
 
 ## A container in clarification
 

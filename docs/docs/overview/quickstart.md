@@ -14,7 +14,7 @@ mandatory variable is a boot error that names it (one JSON line, exit code 1).
 
 The end-to-end floor is Postgres 16, `confluentinc/confluent-local:7.6.1` (Kafka), Eclipse Mosquitto 2.0.20 (the
 subsystems' PLC link, not used by this service), `IQVO/equipment-emulator` (the simulated AS/RS and robots),
-`IQVO/asrs-control` built from `007bf7b` and `IQVO/amr-fleet-control` built from its `develop`. Start the
+`IQVO/asrs-control` built from `b23a5a2` (the commit `contracts/pinned.json` pins) and `IQVO/amr-fleet-control` built from its `develop`. Start the
 infrastructure:
 
 ```bash

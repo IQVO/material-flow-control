@@ -23,7 +23,8 @@ the imports and refuse write methods). See [Agents](/docs/ecosystem/agents).
 
 ```text
 internal/domain/            pure: layout, routing, transportrequest, transportorder, containertrack, stationqueue, capacity
-internal/application/       ports (interfaces, sentinel errors), facts, command, idempotency, outbox, usecases
+internal/application/       ports (interfaces, sentinel errors), facts, command, idempotency, outbox, subsystem
+                            (a subsystem call's request, Accepted and Refusal), usecases
 internal/adapters/inbound/  http (REST + Idempotency middleware), kafka (two consumers + DLQ), mcp, a2a, requestlog
 internal/adapters/outbound/ postgres, asrs, amr, subsystemhttp, events, outbox, kafka, telemetry, system, memory (tests only)
 internal/config/            the layout YAML loader
