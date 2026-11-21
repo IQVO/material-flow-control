@@ -88,7 +88,10 @@ const domainMaxHandlerAttempts = 5
 // preserving relative order for that key), RequireAll acks,
 // AllowAutoTopicCreation (the DLQ topic has never been written to before
 // the first poison message) and a short BatchTimeout so a lone synchronous
-// write is not held for kafka-go's 1s default.
+// write is not held for kafka-go's 1s default. WriteTimeout and ReadTimeout
+// are the fleet's 10 s (kafka_writer_timeout_fitness_test): with RequireAll and
+// no deadline one half-open broker connection blocks the dead-letter write
+// forever, wedging the partition.
 //
 // The writer has NO fixed Topic: publishDeadLetter names "<topic>.dlq" on
 // every message, and kafka-go refuses a message whose Topic is set when the
@@ -101,6 +104,8 @@ func newDomainDLQWriter(brokers []string) DeadLetterWriter {
 		Balancer:               &kafkago.Hash{},
 		RequiredAcks:           kafkago.RequireAll,
 		BatchTimeout:           10 * time.Millisecond,
+		WriteTimeout:           10 * time.Second,
+		ReadTimeout:            10 * time.Second,
 		AllowAutoTopicCreation: true,
 	}
 }
