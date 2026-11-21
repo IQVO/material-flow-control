@@ -57,6 +57,14 @@ func (s *script) Calls() []Call {
 	return append([]Call(nil), s.calls...)
 }
 
+// observe records a read call: it consumes no queued answer and does not advance the id counter.
+// carry (Task 8 review): RecommendedInputPort used record, which ate the next call's answer and bumped sj-N.
+func (s *script) observe(c Call) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls = append(s.calls, c)
+}
+
 func (s *script) count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,7 +99,7 @@ func (a *Asrs) ConfirmPickup(_ context.Context, key, asrsID, portID, containerID
 }
 
 func (a *Asrs) RecommendedInputPort(_ context.Context, asrsID string) (string, error) {
-	_ = a.record(Call{Op: "RecommendedInputPort", SubsystemID: asrsID})
+	a.observe(Call{Op: "RecommendedInputPort", SubsystemID: asrsID})
 	return a.Recommended, a.RecommendErr
 }
 
