@@ -97,7 +97,13 @@ func TestAReplacedFailedLegIsSkippedAndTheOrderCompletes(t *testing.T) {
 		if act != to.ActionRequest || leg.Ref != ref {
 			t.Fatalf("re-plan leg = %+v %s, want %s", leg, act, ref)
 		}
-		must(t, o.Delivered(ref, t0))
+		// carry (Task 9 review): end each leg with the fact of its kind (MOVE to-1.3.1 Delivered, STORE to-1.4.1 Stored).
+		switch leg.Kind {
+		case routing.KindStore:
+			must(t, o.Stored(ref, t0))
+		default:
+			must(t, o.Delivered(ref, t0))
+		}
 	}
 	if _, act := o.Next(t0); act != to.ActionComplete {
 		t.Fatalf("Next after the re-plan = %s", act)
