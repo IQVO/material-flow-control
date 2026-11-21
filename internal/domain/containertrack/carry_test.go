@@ -1,6 +1,7 @@
 package containertrack_test
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -25,5 +26,23 @@ func TestASecondClarificationKeepsTheFirstHoldAndRaisesNoEvent(t *testing.T) {
 	}
 	if !tk.Snapshot().UpdatedAt.Equal(t0) {
 		t.Fatalf("a no-op moved UpdatedAt to %v", tk.Snapshot().UpdatedAt)
+	}
+}
+
+// carry (Task 4 review): an empty order id never reserves a container; an empty ActiveOrderID means "free", so a
+// "" reservation would claim success and reserve nothing. The track is unchanged.
+func TestAnEmptyOrderIDNeverReservesTheContainer(t *testing.T) {
+	tk := ct.New("TOTE-1", t0)
+	if err := tk.Reserve("", "rq-1", t0.Add(time.Minute)); !errors.Is(err, ct.ErrNoOrder) {
+		t.Fatalf("Reserve(\"\") = %v, want ErrNoOrder", err)
+	}
+	if err := tk.ReserveInternal("", t0.Add(time.Minute)); !errors.Is(err, ct.ErrNoOrder) {
+		t.Fatalf("ReserveInternal(\"\") = %v, want ErrNoOrder", err)
+	}
+	if s := tk.Snapshot(); s.ActiveOrderID != "" || s.ActiveRequestID != "" || !s.UpdatedAt.Equal(t0) {
+		t.Fatalf("a refused reservation changed the track: %+v", s)
+	}
+	if err := tk.Reserve("to-1", "rq-1", t0); err != nil || tk.ActiveOrderID() != "to-1" {
+		t.Fatalf("Reserve(to-1) = %v, active %q", err, tk.ActiveOrderID())
 	}
 }

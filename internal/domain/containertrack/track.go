@@ -14,6 +14,8 @@ var (
 	ErrBusy               = errors.New("the container has an active transport order")
 	ErrInClarification    = errors.New("the container is held at clarification")
 	ErrNotInClarification = errors.New("the container is not in clarification")
+	// ErrNoOrder: carry (Task 4 review) — a reservation names an order; "" would reserve nothing.
+	ErrNoOrder = errors.New("a reservation needs an order id")
 )
 
 // PositionKind is where a container is.
@@ -168,6 +170,9 @@ func (t *Track) Dispatchable() error {
 
 // Reserve makes orderID the container's one active order (responsibilities 1 and 4).
 func (t *Track) Reserve(orderID, requestID string, at time.Time) error {
+	if orderID == "" { // carry (Task 4 review)
+		return ErrNoOrder
+	}
 	if err := t.Dispatchable(); err != nil {
 		return err
 	}
@@ -177,6 +182,9 @@ func (t *Track) Reserve(orderID, requestID string, at time.Time) error {
 
 // ReserveInternal reserves the container for an internal clarification move, which may take a held container.
 func (t *Track) ReserveInternal(orderID string, at time.Time) error {
+	if orderID == "" { // carry (Task 4 review)
+		return ErrNoOrder
+	}
 	if t.s.ActiveOrderID != "" {
 		return ErrBusy
 	}
