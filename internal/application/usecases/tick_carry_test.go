@@ -166,3 +166,39 @@ func TestALateOnRobotFailureWithoutARobotHoldsTheContainerInPlace(t *testing.T) 
 		t.Fatalf("track = %+v, want held %s at ST1", track.Snapshot(), ct.ReasonOnFailedRobot)
 	}
 }
+
+// ruling P4-R9: a leg that timed out with the container picked up failed with the container on the robot (decision
+// D12): Tick fails the transport TIMEOUT, queues the best-effort cancel, and holds the container
+// CONTAINER_ON_FAILED_ROBOT with one ContainerSentToClarification.
+func TestATimedOutPickedUpLegHoldsTheContainerOnTheRobot(t *testing.T) {
+	e := newEnv(t)
+	e.mustAccept("rq-1", "TOTE-1", "ST1", pack, tr.PurposeOutbound)
+	e.dispatch()
+	o, err := e.svc.OrderDetail(ctx, "rq-1")
+	e.must(err)
+	e.pickedUp(o.Legs[0].Ref, "TOTE-1", "ST1")
+	before := len(e.events.All())
+	e.clock.Advance(900 * time.Second)
+	if n, err := e.svc.Tick(ctx); n != 1 || err != nil {
+		t.Fatalf("Tick = %d %v", n, err)
+	}
+	o, err = e.svc.OrderDetail(ctx, "rq-1")
+	e.must(err)
+	if o.Status != transportorder.StatusFailed || o.Reason != transportorder.FailTimeout || len(e.pending(command.CancelLeg)) != 1 {
+		t.Fatalf("order = %s %s, cancels %+v", o.Status, o.Reason, e.pending(command.CancelLeg))
+	}
+	var sent []ct.ContainerSentToClarification
+	for _, ev := range e.events.All()[before:] {
+		if s, ok := ev.(ct.ContainerSentToClarification); ok {
+			sent = append(sent, s)
+		}
+	}
+	if len(sent) != 1 || sent[0].Reason != ct.ReasonOnFailedRobot || sent[0].ContainerID != "TOTE-1" {
+		t.Fatalf("events = %+v, want one ContainerSentToClarification %s", e.events.All()[before:], ct.ReasonOnFailedRobot)
+	}
+	track, err := e.tracks.Get(ctx, "TOTE-1")
+	e.must(err)
+	if _, held := track.Clarification(); !held || track.Position() != ct.OnRobotOf("AMR1", "EMU/R1") {
+		t.Fatalf("track = %+v", track.Snapshot())
+	}
+}

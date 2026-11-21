@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/application/command"
+	"github.com/IQVO/material-flow-control/internal/domain/containertrack"
 	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
 )
 
@@ -38,9 +39,7 @@ func (s *Service) Tick(ctx context.Context) (int, error) {
 			if err != nil || !stale(fresh, f.now, s.cfg.LegTimeout) {
 				return err
 			}
-			cur, _ := fresh.Current()
-			f.enqueue(fresh.ID(), cur.Ref, command.CancelLeg)
-			if err := f.fail(fresh, transportorder.FailTimeout, "LEG_TIMEOUT"); err != nil {
+			if err := timeOut(f, fresh); err != nil {
 				return err
 			}
 			n++
@@ -51,4 +50,17 @@ func (s *Service) Tick(ctx context.Context) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// timeOut queues the best-effort cancellation of the stale leg and fails the transport TIMEOUT. A leg that timed
+// out PICKED_UP failed with the container on the robot (decision D12): the container is also held
+// CONTAINER_ON_FAILED_ROBOT; an already-held one keeps its first hold (ruling P4-R5).
+// ruling P4-R9
+func timeOut(f *flow, o *transportorder.Order) error {
+	cur, _ := o.Current()
+	f.enqueue(o.ID(), cur.Ref, command.CancelLeg)
+	if cur.Status == transportorder.LegPickedUp {
+		return f.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, cur.From, transportorder.FailTimeout, "LEG_TIMEOUT")
+	}
+	return f.fail(o, transportorder.FailTimeout, "LEG_TIMEOUT")
 }
