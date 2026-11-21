@@ -21,6 +21,8 @@ var (
 	ErrNotWaiting     = errors.New("no leg waits for a station slot")
 	ErrNotCancellable = errors.New("the transport cannot be cancelled now")
 	ErrNotRetryable   = errors.New("the leg cannot be retried or re-planned")
+	// ErrLegsRemaining: ruling P4-R7 — Complete before every leg ran (Next would not answer ActionComplete).
+	ErrLegsRemaining = errors.New("the transport order has legs that have not run")
 )
 
 // Status is the order's lifecycle state.
@@ -196,26 +198,50 @@ func (o *Order) Previous(ref string) (Leg, bool) {
 
 // Next starts the next leg once the previous one is DONE: a MOVE into a station waits for a slot
 // (ActionAwaitStation), any other leg is requested (ActionRequest); ActionComplete when every leg is done.
+// ruling P4-R7: a FAILED leg is skipped only once it was replaced (see superseded); otherwise ActionNone.
 func (o *Order) Next(at time.Time) (Leg, Action) {
 	if o.Ended() {
 		return Leg{}, ActionNone
 	}
-	var prev *Leg
-	for i := range o.s.Legs {
-		l := &o.s.Legs[i]
-		if l.Status == LegDone {
-			prev = l
-			continue
-		}
-		if l.Status != LegPlanned {
-			if l.Ended() {
-				continue
-			}
-			return Leg{}, ActionNone
-		}
-		return o.activate(l, prev, at)
+	i, prev, act := o.scan()
+	if i < 0 {
+		return Leg{}, act
 	}
-	return Leg{}, ActionComplete
+	var p *Leg
+	if prev >= 0 {
+		p = &o.s.Legs[prev]
+	}
+	return o.activate(&o.s.Legs[i], p, at)
+}
+
+// scan finds, without changing the order, the PLANNED leg Next would start (its index and the index of the last
+// DONE leg before it, -1 for none), or -1 with ActionNone (a leg runs or blocks) or ActionComplete.
+func (o *Order) scan() (int, int, Action) {
+	prev := -1
+	for i, l := range o.s.Legs {
+		switch {
+		case l.Status == LegDone:
+			prev = i
+		case l.Status == LegPlanned:
+			return i, prev, ActionRequest
+		case l.Status == LegCancelled, l.Status == LegFailed && o.superseded(i):
+		default:
+			return -1, prev, ActionNone
+		}
+	}
+	return -1, prev, ActionComplete
+}
+
+// superseded reports a FAILED leg that was replaced (ruling P4-R7): a later attempt of the same Seq exists, or it
+// is a STORE re-planned (Replans > 0) with legs appended after it.
+func (o *Order) superseded(i int) bool {
+	l := o.s.Legs[i]
+	for _, later := range o.s.Legs[i+1:] {
+		if later.Seq == l.Seq || (l.Kind == routing.KindStore && o.s.Replans > 0) {
+			return true
+		}
+	}
+	return false
 }
 
 func (o *Order) activate(l *Leg, prev *Leg, at time.Time) (Leg, Action) {
@@ -246,6 +272,9 @@ func (o *Order) Admitted(at time.Time) (Leg, error) {
 func (o *Order) Complete(queuePosition int, at time.Time) error {
 	if o.Ended() {
 		return ErrEnded
+	}
+	if _, _, act := o.scan(); act != ActionComplete { // ruling P4-R7
+		return ErrLegsRemaining
 	}
 	o.s.Status, o.s.EndedAt = StatusCompleted, at
 	if o.s.Internal {
