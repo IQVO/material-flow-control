@@ -33,7 +33,7 @@ changes.
 | an event payload | `apis/asyncapi.yaml`, the encoder's golden test, [Events published](/docs/ecosystem/events-published) |
 | a consumed producer contract | the pinned copy under `contracts/` (copy the producer's `develop` file, never edit it) |
 | the layout | asrs-control's layout and amr-fleet-control's map, in the same change |
-| a domain `Snapshot` field | a numbered migration rewriting the JSONB columns when the field is renamed or retyped |
+| a domain `Snapshot` field | additive only; a renamed or retyped field needs a numbered migration rewriting the JSONB columns ([ADR 0002](/docs/adr/0002-material-flow-layout-routing-and-the-command-outbox) decision 6); regenerate `internal/adapters/outbound/postgres/testdata/snapshot_keys.golden` with `-update-snapshot-keys` for an added field |
 | an architectural decision | a new ADR under `docs/adr/` and its row in `docs/adr/index.md` |
 
 The docs site builds with `cd docs && npm ci && npm run build` (Node 20); `onBrokenLinks` is `throw`.

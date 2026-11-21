@@ -31,6 +31,16 @@ the container." The subsystems are called over REST (relationships 4 and 5) and 
    first attempt; a FINAL refusal fails the transport at once.
 5. **Flow lock.** Every write unit of work first locks the single `flow_lock` row, so a REST request, a Kafka
    fact, a dispatcher answer and the tick never interleave.
+6. **Snapshot evolution** (added after the Task 13 review). Aggregates and the other stored values are persisted
+   as the JSON of their Go type (`transport_requests.record`, `transport_orders.snapshot`,
+   `container_tracks.snapshot`, `container_moves.move`, `station_queues.snapshot`, `subsystem_capacities.snapshot`,
+   `equipment_units.state`; exported field names, no tags in the domain). The stored shape evolves **additively
+   only**: a new field is added with a zero value that means "absent", so a row written before it decodes unchanged.
+   Renaming or retyping a field, or changing what it means, is a numbered migration that rewrites the affected
+   JSONB columns in the same change; it is never a code-only edit. A rollback to an older binary decodes a newer row
+   and ignores the fields it does not know, and its next save of that aggregate DROPS them: rolling back across an
+   additive change loses the new fields of every aggregate the old binary rewrites, and rolling back across a
+   rename or retype migration needs that migration's down step.
 
 ## Consequences
 
@@ -38,3 +48,6 @@ the container." The subsystems are called over REST (relationships 4 and 5) and 
 - A subsystem fact can arrive before the dispatcher recorded the subsystem's `202`; matching by our reference makes
   the order of the two irrelevant.
 - Writes are serial. Throughput is bounded by one Postgres transaction per fact, far above the floor's event rate.
+- `internal/adapters/outbound/postgres/testdata/snapshot_keys.golden` pins the sorted key paths and leaf types of
+  every stored type: an added path is regenerated, a renamed, retyped or removed one fails the test until its
+  migration exists.
