@@ -125,7 +125,7 @@ func Card(cfg Config) *a2a.AgentCard {
 
 // NewExecutor maps an incoming message to a skill and answers with ONE agent Message (a message-only
 // agent): every skill is a request/response read, so there is no Task lifecycle. The answer carries the
-// caller's contextId (and taskId) so a delegating saga can group it.
+// caller's contextId so a delegating saga can group it, and no taskId (carry, Task 21 review: no Task exists).
 func NewExecutor(deps Deps) a2asrv.AgentExecutor {
 	return a2asrv.AgentExecutorFunc(func(ctx context.Context, ec *a2asrv.ExecutorContext) iter.Seq2[a2a.Event, error] {
 		return func(yield func(a2a.Event, error) bool) {

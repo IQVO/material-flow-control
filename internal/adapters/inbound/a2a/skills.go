@@ -207,9 +207,12 @@ func (d Deps) equipmentUnits(ctx context.Context, raw json.RawMessage) (skillDTO
 }
 
 // reply is the agent Message of one run: a data part with the envelope and a text part with the one-line
-// summary, bound to the caller's context (and task).
+// summary, bound to the caller's contextId only. carry (Task 21 review): no taskId; the SDK mints one for every
+// run, but a message-only agent creates no Task, so naming it would point a client at a task that never existed.
 func reply(ec *a2asrv.ExecutorContext, env envelope, summary string) a2a.Event {
-	return a2a.NewMessageForTask(a2a.MessageRoleAgent, ec, a2a.NewDataPart(env), a2a.NewTextPart(summary))
+	msg := a2a.NewMessage(a2a.MessageRoleAgent, a2a.NewDataPart(env), a2a.NewTextPart(summary))
+	msg.ContextID = ec.ContextID
+	return msg
 }
 
 // parseSkillRequest reads the request off the first part. A malformed delegation is answered as a problem
