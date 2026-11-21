@@ -193,7 +193,11 @@ func (s *Service) Subsystems(ctx context.Context) ([]capacity.Snapshot, error) {
 	return s.d.Capacities.List(ctx)
 }
 
-// EquipmentUnits lists the last known state of an AS/RS's units.
+// EquipmentUnits lists the last known state of an AS/RS's units. carry (Task 20 review): an AS/RS the layout does
+// not name is ErrAsrsNotFound, so an empty list always means "no unit reported yet", never "no such AS/RS".
 func (s *Service) EquipmentUnits(ctx context.Context, asrsID string) ([]facts.EquipmentState, error) {
+	if _, ok := s.l.Asrs(asrsID); !ok {
+		return nil, ErrAsrsNotFound
+	}
 	return s.d.Units.List(ctx, asrsID)
 }

@@ -243,6 +243,7 @@ var useCaseProblems = []struct {
 	{usecases.ErrRequestNotFound, problem{Code: "transport-request-not-found", Title: "Transport request not found", Status: 404}},
 	{usecases.ErrTrackNotFound, problem{Code: "container-track-not-found", Title: "Container track not found", Status: 404}},
 	{usecases.ErrStationNotFound, problem{Code: "station-not-found", Title: "Station not found", Status: 404}},
+	{usecases.ErrAsrsNotFound, problem{Code: "asrs-not-found", Title: "AS/RS not found", Status: 404}}, // carry (Task 20 review)
 	{usecases.ErrInvalidRequest, problem{Code: "invalid-parameter", Title: "Invalid parameter", Status: 400}},
 }
 

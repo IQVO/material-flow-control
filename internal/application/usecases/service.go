@@ -20,6 +20,7 @@ var (
 	ErrRequestNotFound    = errors.New("transport request not found")
 	ErrTrackNotFound      = errors.New("container track not found")
 	ErrStationNotFound    = errors.New("station not found")
+	ErrAsrsNotFound       = errors.New("AS/RS not found") // carry (Task 20 review): EquipmentUnits names a layout AS/RS
 	ErrUnknownLocation    = errors.New("the location is not a place of this automation")
 	ErrTransportEnded     = errors.New("the transport has ended")
 	ErrNotCancellable     = errors.New("the transport cannot be cancelled now")

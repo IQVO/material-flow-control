@@ -69,7 +69,8 @@ var agentSurfaces = []agentSurface{
 var agentAllowedSelectors = map[string][]string{
 	"ports": {},
 	"usecases": {"NewReader", "ReadDeps", "Reader", "DefaultConfig", "Config", "TransportView", "TrackView",
-		"ErrRequestNotFound", "ErrTrackNotFound", "ErrStationNotFound", "ErrInvalidRequest"},
+		"ErrRequestNotFound", "ErrTrackNotFound", "ErrStationNotFound", "ErrInvalidRequest",
+		"ErrAsrsNotFound"}, // carry (Task 20 review): the read-only AS/RS lookup refusal
 	"postgres": {"MigrationsURL", "RunMigrations", "NewPool", "NewRequests", "NewOrders", "NewTracks", "NewStations",
 		"NewCapacities", "NewUnits"},
 }

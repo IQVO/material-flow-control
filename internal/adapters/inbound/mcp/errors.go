@@ -19,6 +19,7 @@ var errorCatalogue = []struct {
 	{usecases.ErrRequestNotFound, "transport-request-not-found"},
 	{usecases.ErrTrackNotFound, "container-track-not-found"},
 	{usecases.ErrStationNotFound, "station-not-found"},
+	{usecases.ErrAsrsNotFound, "asrs-not-found"}, // carry (Task 20 review); asrs-control's slug for the same outcome
 	{usecases.ErrInvalidRequest, "invalid-parameter"},
 }
 

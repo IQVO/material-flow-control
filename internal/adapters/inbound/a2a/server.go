@@ -113,7 +113,8 @@ func Card(cfg Config) *a2a.AgentCard {
 				ID:   skillEquipmentUnits,
 				Name: "AS/RS unit states",
 				Description: "Answer the last reported state of every shuttle-and-lift unit of one AS/RS (IDLE, EXECUTE, HELD), " +
-					"as asrs-control's EquipmentStateChanged reported it. Arguments: asrsId (required). Persists nothing.",
+					"as asrs-control's EquipmentStateChanged reported it. Arguments: asrsId (required). Answers an asrs-not-found " +
+					"problem for an AS/RS the layout does not name. Persists nothing.",
 				Tags:       []string{"asrs", "equipment", "read", "authority:L1"},
 				InputModes: []string{contentTypeJSON},
 				Examples:   []string{`{"skill":"equipment_units","arguments":{"asrsId":"ASRS1"}}`},
