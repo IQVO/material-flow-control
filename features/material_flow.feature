@@ -10,12 +10,13 @@ Feature: material-flow-control acceptance criteria (warehouse-docs docs/wcs/impl
     When the WES requests "TOTE-1" from "WH1-AUTO-ASRS-ASRS1-00-00-S" to "ST1" for "PICK" as "rq-1"
     And the AS/RS presents "TOTE-1" at port "OUT1" with scan "READ"
     And a robot carries "TOTE-1" to "ST1"
-    Then "ContainerArrivedAtStation" is published for station "ST1" at queue position 1
+    Then "ContainerArrivedAtStation" is published for station "ST1" at queue position 1 for "TOTE-1" of "rq-1"
     And transport "rq-1" is "COMPLETED"
     When the WES requests "TOTE-1" from "ST1" to "WH1-AUTO-ASRS-ASRS1-00-00-S" for "RETURN" as "rq-2"
     And a robot carries "TOTE-1" to "ASRS1-IN1"
     And the AS/RS stores "TOTE-1"
     Then transport "rq-2" is "COMPLETED"
+    And the events of "rq-2" are "TransportAccepted,TransportCompleted"
     And container "TOTE-1" is "IN_ASRS" at "WH1-AUTO-ASRS-ASRS1-00-00-S"
     And no event names a robot, a node, a rack position or a leg
 

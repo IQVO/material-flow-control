@@ -116,13 +116,16 @@ func name(ev any) string {
 	return s[strings.LastIndex(s, ".")+1:]
 }
 
-func (w *world) arrived(station string, pos int) error {
+// carry (Task 12 review): the arrival must name the container and the request, not only the station slot.
+func (w *world) arrived(station string, pos int, container, request string) error {
+	want := transportorder.ContainerArrivedAtStation{StationID: station, QueuePosition: pos, ContainerID: container, RequestID: request}
 	for _, ev := range w.events.All() {
-		if a, ok := ev.(transportorder.ContainerArrivedAtStation); ok && a.StationID == station && a.QueuePosition == pos {
+		a, ok := ev.(transportorder.ContainerArrivedAtStation)
+		if ok && a.StationID == want.StationID && a.QueuePosition == want.QueuePosition && a.ContainerID == want.ContainerID && a.RequestID == want.RequestID {
 			return nil
 		}
 	}
-	return fmt.Errorf("no arrival at %s position %d", station, pos)
+	return fmt.Errorf("no arrival of %s for %s at %s position %d in %+v", container, request, station, pos, w.events.All())
 }
 
 func (w *world) status(id, want string) error {
@@ -235,7 +238,7 @@ func scenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the AS/RS presents "([^"]*)" at port "([^"]*)" with scan "([^"]*)"$`, w.presented)
 	sc.Step(`^a robot carries "([^"]*)" to "([^"]*)"$`, w.carried)
 	sc.Step(`^the AS/RS stores "([^"]*)"$`, w.storedLeg)
-	sc.Step(`^"ContainerArrivedAtStation" is published for station "([^"]*)" at queue position (\d+)$`, w.arrived)
+	sc.Step(`^"ContainerArrivedAtStation" is published for station "([^"]*)" at queue position (\d+) for "([^"]*)" of "([^"]*)"$`, w.arrived)
 	sc.Step(`^transport "([^"]*)" is "([^"]*)"$`, w.status)
 	sc.Step(`^transport "([^"]*)" failed "([^"]*)"$`, w.failed)
 	sc.Step(`^the events of "([^"]*)" are "([^"]*)"$`, w.eventsOf)
