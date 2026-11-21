@@ -24,3 +24,11 @@ func TestParseLogLevel(t *testing.T) {
 		}
 	}
 }
+
+// carry (Task 22 review): the boot error lists every accepted value, the "warning" alias included.
+func TestParseLogLevelErrorListsTheWarningAlias(t *testing.T) {
+	_, err := ParseLogLevel("verbose")
+	if err == nil || !strings.Contains(err.Error(), "warning") {
+		t.Fatalf("ParseLogLevel(verbose) error = %v; want it to list warning", err)
+	}
+}

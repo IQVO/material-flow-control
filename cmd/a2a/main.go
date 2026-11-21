@@ -56,8 +56,8 @@ type config struct {
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
-	or := func(k, def string) string {
-		if v := getenv(k); v != "" {
+	or := func(k, def string) string { // carry (Task 22 review): trimmed before the default, as cmd/api's r.str
+		if v := strings.TrimSpace(getenv(k)); v != "" {
 			return v
 		}
 		return def

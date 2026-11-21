@@ -33,3 +33,12 @@ func TestASetButInvalidLogLevelIsABootError(t *testing.T) {
 		}
 	}
 }
+
+// carry (Task 22 review): LOG_LEVEL is trimmed before the default, as cmd/api's r.str does, so a blank value boots at info.
+func TestABlankLogLevelBootsAtInfo(t *testing.T) {
+	m := map[string]string{"A2A_AGENT_URL": testAgentURL, "DATABASE_URL": "postgres://db", "MFC_LAYOUT_FILE": "/l.yaml", "LOG_LEVEL": "   "}
+	c, err := loadConfig(env(m))
+	if err != nil || c.LogLevel != "info" {
+		t.Fatalf("LOG_LEVEL=%q: LogLevel = %q, err = %v; want info and no error", "   ", c.LogLevel, err)
+	}
+}

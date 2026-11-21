@@ -21,5 +21,6 @@ func ParseLogLevel(level string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	}
-	return slog.LevelInfo, fmt.Errorf("LOG_LEVEL must be one of debug, info, warn, error, got %q", level)
+	// carry (Task 22 review): the text lists the warning alias too.
+	return slog.LevelInfo, fmt.Errorf("LOG_LEVEL must be one of debug, info, warn (or warning), error, got %q", level)
 }
