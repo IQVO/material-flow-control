@@ -1,0 +1,31 @@
+{{- include "material-flow-control.require" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "material-flow-control.fullname" . }}
+  labels:
+    {{- include "material-flow-control.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+data:
+  ADDR: {{ .Values.config.addr | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  KAFKA_BROKERS: {{ .Values.kafka.brokers | quote }}
+  MFC_ASRS_CONSUMER_GROUP: {{ .Values.kafka.asrsConsumerGroup | quote }}
+  MFC_AMR_CONSUMER_GROUP: {{ .Values.kafka.amrConsumerGroup | quote }}
+  ASRS_CONTROL_URL: {{ .Values.subsystems.asrsControlUrl | quote }}
+  AMR_FLEET_CONTROL_URL: {{ .Values.subsystems.amrFleetControlUrl | quote }}
+  SUBSYSTEM_TIMEOUT_MS: {{ .Values.subsystems.timeoutMs | quote }}
+  MFC_LAYOUT_FILE: {{ .Values.config.layoutFile | quote }}
+  OUTBOX_INTERVAL_MS: {{ .Values.config.outboxIntervalMs | quote }}
+  OUTBOX_BATCH: {{ .Values.config.outboxBatch | quote }}
+  OUTBOX_MAX_ATTEMPTS: {{ .Values.config.outboxMaxAttempts | quote }}
+  LEG_RETRY_LIMIT: {{ .Values.config.legRetryLimit | quote }}
+  LEG_REQUEST_DEADLINE_SECONDS: {{ .Values.config.legRequestDeadlineSeconds | quote }}
+  LEG_TIMEOUT_SECONDS: {{ .Values.config.legTimeoutSeconds | quote }}
+  DISPATCH_POLL_MS: {{ .Values.config.dispatchPollMs | quote }}
+  TICK_INTERVAL_MS: {{ .Values.config.tickIntervalMs | quote }}
+  OTEL_SERVICE_NAME: "material-flow-control"
+  SERVICE_VERSION: {{ include "material-flow-control.serviceVersion" . | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ ternary .Values.otel.endpoint "" .Values.otel.enabled | quote }}
+  flow-layout.yaml: |
+    {{- default (.Files.Get "files/flow-layout.yaml") .Values.layout | nindent 4 }}

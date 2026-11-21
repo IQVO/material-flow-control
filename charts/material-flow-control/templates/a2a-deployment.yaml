@@ -1,0 +1,110 @@
+{{- if .Values.a2a.enabled }}
+{{- include "material-flow-control.require" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "material-flow-control.a2aFullname" . }}
+  labels:
+    {{- include "material-flow-control.labels" . | nindent 4 }}
+    app.kubernetes.io/component: a2a
+spec:
+  replicas: {{ .Values.a2a.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "material-flow-control.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: a2a
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "material-flow-control.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: a2a
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "material-flow-control.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: a2a
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ include "material-flow-control.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/app/a2a"]
+          ports:
+            - name: http
+              containerPort: {{ include "material-flow-control.port" .Values.a2a.addr }}
+              protocol: TCP
+          # Env contract = exactly what cmd/a2a reads (render_test.sh diffs it). Read-only (ADR 0007, ruling
+          # P4-R17): no Kafka, no subsystem URL, no outbox; the api ConfigMap is NOT mounted as env, only its
+          # flow-layout.yaml key as a file, so no api variable leaks in.
+          env:
+            - name: A2A_ADDR
+              value: {{ .Values.a2a.addr | quote }}
+            # The URL the Agent Card advertises: a2a.agentUrl, else this release's Service DNS name.
+            - name: A2A_AGENT_URL
+              value: {{ .Values.a2a.agentUrl | default (printf "http://%s.%s.svc.cluster.local:%s/" (include "material-flow-control.a2aFullname" .) .Release.Namespace (include "material-flow-control.port" .Values.a2a.addr)) | quote }}
+            - name: MFC_LAYOUT_FILE
+              value: {{ .Values.config.layoutFile | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            - name: SERVICE_VERSION
+              value: {{ include "material-flow-control.serviceVersion" . | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: "material-flow-control-a2a"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ ternary .Values.otel.endpoint "" .Values.otel.enabled | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "material-flow-control.databaseSecretName" . }}
+                  key: {{ .Values.database.existingSecretKey }}
+            {{- if .Values.database.migrationsExistingSecretKey }}
+            - name: MIGRATIONS_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "material-flow-control.databaseSecretName" . }}
+                  key: {{ .Values.database.migrationsExistingSecretKey }}
+                  optional: true
+            {{- end }}
+          volumeMounts:
+            - name: layout
+              mountPath: {{ dir .Values.config.layoutFile }}
+              readOnly: true
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.a2a.resources | nindent 12 }}
+      volumes:
+        - name: layout
+          configMap:
+            name: {{ include "material-flow-control.fullname" . }}
+            items:
+              - key: flow-layout.yaml
+                path: {{ base .Values.config.layoutFile }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,105 @@
+# material-flow-control: the api Deployment (REST :8080, the two subsystem fact consumers, the command dispatcher,
+# the outbox relay), optional read-only mcp (:8090) and a2a (:8093) Deployments, a ConfigMap (env +
+# flow-layout.yaml), a Secret for the database, and default-off Gateway API routes with their Kong plugins.
+# Postgres, Kafka and both subsystem URLs are mandatory; the chart refuses to render without them.
+# Exactly ONE api replica (D19): the chart refuses any other value.
+replicaCount: 1
+image:
+  repository: ghcr.io/iqvo/material-flow-control
+  pullPolicy: IfNotPresent
+  tag: ""
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+# Longer than the HTTP drain (10 s) plus a relay pass and the consumers' close.
+terminationGracePeriodSeconds: 30
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+database:
+  url: ""
+  existingSecret: ""
+  existingSecretKey: "DATABASE_URL"
+  migrationsExistingSecretKey: "MIGRATIONS_DATABASE_URL"
+kafka:
+  brokers: ""
+  asrsConsumerGroup: material-flow-control.asrs-control-events
+  amrConsumerGroup: material-flow-control.amr-fleet-control-events
+subsystems:
+  asrsControlUrl: http://asrs-control.warehouse-systems.svc.cluster.local
+  amrFleetControlUrl: http://amr-fleet-control.warehouse-systems.svc.cluster.local
+  timeoutMs: 5000
+config:
+  addr: ":8080"
+  logLevel: info
+  layoutFile: /etc/material-flow-control/flow-layout.yaml
+  outboxIntervalMs: 250
+  outboxBatch: 100
+  outboxMaxAttempts: 20
+  legRetryLimit: 2
+  legRequestDeadlineSeconds: 300
+  legTimeoutSeconds: 900
+  dispatchPollMs: 200
+  tickIntervalMs: 1000
+# The material-flow layout (ADR 0002). Empty = the chart's files/flow-layout.yaml (a copy of
+# config/flow-layout.example.yaml, kept equal by the render test).
+layout: ""
+otel:
+  enabled: false
+  endpoint: ""
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {memory: 256Mi}
+mcp:
+  enabled: false
+  addr: ":8090"
+  replicaCount: 1
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {memory: 128Mi}
+  route:
+    enabled: false
+    path: /api/mcp/material-flow-control
+a2a:
+  enabled: false
+  addr: ":8093"
+  replicaCount: 1
+  agentUrl: ""
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {memory: 128Mi}
+  route:
+    enabled: false
+    path: /api/a2a/material-flow-control
+gatewayApi:
+  enabled: false
+  parentRefs: []
+  hosts:
+    - path: /api/material-flow-control
+      pathType: PathPrefix
+  stripPath: true
+kongPlugins:
+  cors:
+    enabled: false
+    origins: []
+  opentelemetry:
+    enabled: false
+    endpoint: ""
+  prometheus:
+    enabled: false

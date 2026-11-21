@@ -1,0 +1,26 @@
+database:
+  url: postgres://u@example.invalid:5432/mfc
+kafka:
+  brokers: kafka.example.invalid:9092
+mcp:
+  enabled: true
+  route:
+    enabled: true
+a2a:
+  enabled: true
+  route:
+    enabled: true
+gatewayApi:
+  enabled: true
+  parentRefs:
+    - name: kong
+      namespace: kong
+kongPlugins:
+  cors:
+    enabled: true
+    origins: [https://console.example.invalid]
+  opentelemetry:
+    enabled: true
+    endpoint: http://otel.example.invalid:4318/v1/traces
+  prometheus:
+    enabled: true
