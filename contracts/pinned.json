@@ -1,0 +1,19 @@
+{
+  "_doc": "Every contract copy this repo pins from a producer, and the producer branch it must equal. scripts/harness/pinned_contract_gate.py fails when a copy differs from the producer's develop. Refresh = copy the file, never edit it. amr-fleet-control's two pins are added by Task 24, after plan 03 merged.",
+  "pins": [
+    {
+      "local": "contracts/asrs-control.asyncapi.yaml",
+      "repo": "IQVO/asrs-control",
+      "path": "apis/asyncapi.yaml",
+      "ref": "develop",
+      "pinned_commit": "b23a5a2624e1582101f0e62835547c4806bcfac8"
+    },
+    {
+      "local": "contracts/asrs-control.openapi.yaml",
+      "repo": "IQVO/asrs-control",
+      "path": "apis/openapi.yaml",
+      "ref": "develop",
+      "pinned_commit": "b23a5a2624e1582101f0e62835547c4806bcfac8"
+    }
+  ]
+}
