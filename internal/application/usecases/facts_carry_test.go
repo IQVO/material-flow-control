@@ -54,6 +54,9 @@ func TestASecondFailedStoreAfterTheReplanFailsAndPlansNoThirdStore(t *testing.T)
 // carry (plan 03 Task 9 review): amr-fleet-control may answer a requested cancellation with LegFailed CANCELLED
 // and container_on_robot true (the robot picked before the cancel reached it). The order still ends CANCELLED,
 // and the track follows the container onto the robot; with container_on_robot false it stays at the source.
+// carry (Task 10 review): on the robot the container is also held CONTAINER_ON_FAILED_ROBOT (decision D12) with a
+// ContainerSentToClarification before the TransportFailed, so an operator can resolve it and it can be requested
+// again; with container_on_robot false nothing is held.
 func TestACancelledLegWithTheContainerOnTheRobotEndsCancelledWithTheTrackOnTheRobot(t *testing.T) {
 	for _, onRobot := range []bool{true, false} {
 		e := newEnv(t)
@@ -62,6 +65,7 @@ func TestACancelledLegWithTheContainerOnTheRobotEndsCancelledWithTheTrackOnTheRo
 		if _, out, err := e.svc.CancelTransport(ctx, "rq-1"); err != nil || out != usecases.CancelAsked {
 			t.Fatalf("cancel = %s %v", out, err)
 		}
+		before := len(e.events.All())
 		e.legFailed(ref, "TOTE-1", "CANCELLED", onRobot)
 		if f, ok := e.last().(transportorder.TransportFailed); !ok || f.Reason != transportorder.FailCancelled {
 			t.Fatalf("on robot %v: last = %+v", onRobot, e.last())
@@ -72,6 +76,50 @@ func TestACancelledLegWithTheContainerOnTheRobotEndsCancelledWithTheTrackOnTheRo
 		}
 		if p := e.position("TOTE-1"); p != want {
 			t.Fatalf("on robot %v: track = %+v, want %+v", onRobot, p, want)
+		}
+		if onRobot {
+			assertTheCancelledContainerOnTheRobotIsHeldAndResolvable(t, e, e.events.All()[before:])
+		} else {
+			assertTheCancelledContainerAtTheSourceIsNotHeld(t, e, e.events.All()[before:])
+		}
+	}
+}
+
+func assertTheCancelledContainerOnTheRobotIsHeldAndResolvable(t *testing.T, e *env, evs []any) {
+	t.Helper()
+	track, err := e.tracks.Get(ctx, "TOTE-1")
+	e.must(err)
+	if c, held := track.Clarification(); !held || c.Reason != ct.ReasonOnFailedRobot {
+		t.Fatalf("on robot: track = %+v, want held %s", track.Snapshot(), ct.ReasonOnFailedRobot)
+	}
+	if len(evs) != 2 {
+		t.Fatalf("on robot: events = %+v, want ContainerSentToClarification then TransportFailed", evs)
+	}
+	sent, ok := evs[0].(ct.ContainerSentToClarification)
+	if !ok || sent.Reason != ct.ReasonOnFailedRobot || sent.DetectedAt != "ST1" || sent.ContainerID != "TOTE-1" {
+		t.Fatalf("on robot: first event = %+v", evs[0])
+	}
+	if f, ok := evs[1].(transportorder.TransportFailed); !ok || f.Reason != transportorder.FailCancelled || f.ContainerLocation != "" {
+		t.Fatalf("on robot: second event = %+v, want TransportFailed CANCELLED at \"\"", evs[1])
+	}
+	if _, err := e.svc.ResolveClarification(ctx, "TOTE-1", "ST1"); err != nil {
+		t.Fatalf("on robot: resolve = %v", err)
+	}
+	if _, err := e.request("rq-2", "TOTE-1", "ST1", pack, tr.PurposeOutbound); err != nil {
+		t.Fatalf("on robot: re-request after the resolve = %v", err)
+	}
+}
+
+func assertTheCancelledContainerAtTheSourceIsNotHeld(t *testing.T, e *env, evs []any) {
+	t.Helper()
+	track, err := e.tracks.Get(ctx, "TOTE-1")
+	e.must(err)
+	if _, held := track.Clarification(); held {
+		t.Fatalf("at the source: track held = %+v", track.Snapshot())
+	}
+	for _, ev := range evs {
+		if _, sent := ev.(ct.ContainerSentToClarification); sent {
+			t.Fatalf("at the source: a ContainerSentToClarification was published: %+v", evs)
 		}
 	}
 }

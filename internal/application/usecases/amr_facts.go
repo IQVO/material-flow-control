@@ -143,6 +143,8 @@ func (s *Service) legFailed(fl *flow, o *transportorder.Order, leg transportorde
 				return err
 			}
 			t.MoveTo(containertrack.OnRobotOf(f.FleetID, f.Robot), fl.now)
+			// carry (Task 10 review): a leg that failed with the container on the robot holds it (decision D12).
+			return fl.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, leg.From, transportorder.FailCancelled, "")
 		}
 		return fl.fail(o, transportorder.FailCancelled, "")
 	case f.ContainerOnRobot || f.Reason == "DROP_FAILED":
