@@ -10,7 +10,10 @@ cluster rebuild. This test is the sensor for that decision. It fails if:
   * any auth/authorization plugin is configured (forbidden fleet-wide),
   * the MCP route does not rewrite its prefix to /mcp or the reports route to /reports,
   * the CORS plugin does not allow Idempotency-Key and If-Match, does not expose ETag, Idempotency-Replayed and
-    Mcp-Session-Id, or allows origin "*".
+    Mcp-Session-Id, or allows origin "*",
+  * the CORS plugin's origins are not exactly kongPlugins.cors.origin, or the opentelemetry plugin's traces_endpoint
+    is not kongPlugins.opentelemetry.tracesEndpoint (the keys warehouse-infra's _platform.yaml supplies; carry,
+    Task 23 review).
 
 The enabled render uses ci/all-components-values.yaml (every route on) with the three plugins switched on.
 Run: python3 charts/material-flow-control/tests/test_kong_config.py   (needs helm and PyYAML)
@@ -113,10 +116,24 @@ def main() -> int:
         for header in ("ETag", "Idempotency-Replayed", "Mcp-Session-Id"):
             if header not in cfg.get("exposed_headers", []):
                 failures.append(f"cors plugin does not expose the {header} response header")
-        if "*" in cfg.get("origins", []):
+        if "*" in (cfg.get("origins") or []):
             failures.append("cors plugin allows origin '*'; use the exact origin")
     if not cors:
         failures.append("the enabled render contains no cors KongPlugin")
+
+    # carry (Task 23 review): the plugins carry the platform keys' values, exactly.
+    import yaml  # type: ignore
+    want = yaml.safe_load((CHART / "ci" / "all-components-values.yaml").read_text())["kongPlugins"]
+    for p in cors:
+        if p.get("config", {}).get("origins") != [want["cors"]["origin"]]:
+            failures.append(f"cors origins are {p.get('config', {}).get('origins')}, want [{want['cors']['origin']!r}] (kongPlugins.cors.origin)")
+    otel = [p for p in plugins.values() if p.get("plugin") == "opentelemetry"]
+    for p in otel:
+        got = p.get("config", {}).get("traces_endpoint")
+        if got != want["opentelemetry"]["tracesEndpoint"]:
+            failures.append(f"opentelemetry traces_endpoint is {got!r}, want kongPlugins.opentelemetry.tracesEndpoint {want['opentelemetry']['tracesEndpoint']!r}")
+    if not otel:
+        failures.append("the enabled render contains no opentelemetry KongPlugin")
 
     if failures:
         print("FAIL: material-flow-control chart Kong-config contract")

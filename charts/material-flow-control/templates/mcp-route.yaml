@@ -21,14 +21,9 @@ metadata:
     konghq.com/plugins: {{ . | quote }}
   {{- end }}
 spec:
+  # carry (Task 23 review): mcp.route.parentRefs (warehouse-infra's _platform.yaml), else gatewayApi.parentRefs.
   parentRefs:
-    {{- range .Values.gatewayApi.parentRefs }}
-    - name: {{ .name }}
-      namespace: {{ .namespace }}
-      {{- if .sectionName }}
-      sectionName: {{ .sectionName }}
-      {{- end }}
-    {{- end }}
+    {{- include "material-flow-control.parentRefs" (.Values.mcp.route.parentRefs | default .Values.gatewayApi.parentRefs) | trim | nindent 4 }}
   rules:
     - matches:
         - path:

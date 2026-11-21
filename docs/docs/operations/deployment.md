@@ -70,13 +70,21 @@ The routes and the KongPlugins (`cors`, `prometheus`, `opentelemetry`) are defau
 (`gatewayApi.enabled`, `mcp.route.enabled`, `a2a.route.enabled`, `kongPlugins.*.enabled`); every route names the
 enabled plugins in `konghq.com/plugins`. No auth plugin.
 
+The chart reads the platform keys warehouse-infra's `helm-values/_platform.yaml` supplies, like the sibling charts:
+`kongPlugins.cors.origin` (the exact web origin; a `kongPlugins.cors.origins` list is accepted too),
+`kongPlugins.opentelemetry.tracesEndpoint`, `gatewayApi.parentRefs` and `mcp.route.parentRefs` /
+`a2a.route.parentRefs` (each falls back to `gatewayApi.parentRefs` when empty). It refuses to render an enabled
+`cors` without an origin or with `"*"`, and an enabled `opentelemetry` without a traces endpoint.
+
 ## Chart tests
 
 `charts/material-flow-control/tests/` (run by CI's `chart-tests` job): `render_test.sh` (the api env is exactly what
 `cmd/api` reads, the mcp and a2a env exactly what their binaries read with both database URLs from the Secret, the
 mounted layout is `config/flow-layout.example.yaml`, one replica with `Recreate`, the grace period, the guards and
 the default-off routes), `test_service_selectors.py` (every Service selects exactly its own component's Deployment)
-and `test_kong_config.py` (the three routes, their rewrites and plugins, no auth plugin, CORS headers).
+and `test_kong_config.py` (the three routes, their rewrites and plugins, no auth plugin, CORS headers, the origin and
+traces endpoint from the platform keys). `render_test.sh` also renders `tests/fixtures/platform-values.yaml` (a copy
+of warehouse-infra's `_platform.yaml`) under an asrs-control-shaped application file, as ArgoCD layers them.
 
 ## Changing the layout
 

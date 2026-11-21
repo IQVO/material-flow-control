@@ -73,4 +73,43 @@ PY
     rm -f "$d_file"
   done
 done
+# carry (Task 23 review): the chart reads the PLATFORM keys warehouse-infra supplies (helm-values/_platform.yaml:
+# kongPlugins.cors.origin, kongPlugins.opentelemetry.tracesEndpoint, mcp/a2a.route.parentRefs), like the sibling
+# charts. Rendered as ArgoCD layers it (platform file first, then the app file), the plugins carry exactly the
+# platform's origin and traces endpoint and every route attaches to the platform's Gateway.
+fx="$chart_dir/tests/fixtures"
+p_file="$(mktemp)"
+helm template material-flow-control "$chart_dir" -f "$fx/platform-values.yaml" -f "$fx/app-values.yaml" > "$p_file" \
+  || { rm -f "$p_file"; fail "the platform-shaped values do not render"; }
+python3 - "$fx/platform-values.yaml" "$p_file" <<'PY' || { rm -f "$p_file"; fail "platform-shaped render"; }
+import sys, yaml
+platform = yaml.safe_load(open(sys.argv[1]))
+docs = [d for d in yaml.safe_load_all(open(sys.argv[2])) if d]
+plugins = {d["plugin"]: d for d in docs if d.get("kind") == "KongPlugin"}
+assert sorted(plugins) == ["cors", "opentelemetry", "prometheus"], f"KongPlugins {sorted(plugins)}"
+origin = platform["kongPlugins"]["cors"]["origin"]
+assert plugins["cors"]["config"]["origins"] == [origin], f"cors origins {plugins['cors']['config']['origins']}, want [{origin!r}]"
+traces = platform["kongPlugins"]["opentelemetry"]["tracesEndpoint"]
+got = plugins["opentelemetry"]["config"]["traces_endpoint"]
+assert got == traces, f"traces_endpoint {got!r}, want {traces!r}"
+routes = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "HTTPRoute"}
+want_refs = {"material-flow-control": platform["gatewayApi"]["parentRefs"],
+             "material-flow-control-mcp": platform["mcp"]["route"]["parentRefs"],
+             "material-flow-control-a2a": platform["a2a"]["route"]["parentRefs"]}
+assert sorted(routes) == sorted(want_refs), f"HTTPRoutes {sorted(routes)}"
+for name, refs in want_refs.items():
+    assert routes[name]["spec"]["parentRefs"] == refs, f"{name} parentRefs {routes[name]['spec']['parentRefs']}, want {refs}"
+PY
+rm -f "$p_file"
+# The guards: an enabled cors plugin needs an origin (never "*"), an enabled opentelemetry plugin a traces endpoint.
+render --set kongPlugins.cors.enabled=true >/dev/null 2>&1 && fail "cors enabled without an origin rendered"
+render --set kongPlugins.cors.enabled=true --set kongPlugins.cors.origin='*' >/dev/null 2>&1 && fail "cors origin '*' rendered"
+render --set kongPlugins.opentelemetry.enabled=true >/dev/null 2>&1 && fail "opentelemetry enabled without tracesEndpoint rendered"
+# An origins list is accepted too (with or without origin), never with "*" in it.
+cors="$(render --set kongPlugins.cors.enabled=true --set 'kongPlugins.cors.origins={http://a.invalid,http://b.invalid}' \
+  --show-only templates/kong-plugins.yaml)"
+python3 -c 'import sys, yaml; o = yaml.safe_load(sys.stdin)["config"]["origins"]; assert o == ["http://a.invalid", "http://b.invalid"], o' \
+  <<<"$cors" || fail "cors origins list"
+render --set kongPlugins.cors.enabled=true --set 'kongPlugins.cors.origins={http://a.invalid,*}' >/dev/null 2>&1 \
+  && fail "cors origins list with '*' rendered"
 echo "render_test: OK"

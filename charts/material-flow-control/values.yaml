@@ -78,6 +78,8 @@ mcp:
   route:
     enabled: false
     path: /api/mcp/material-flow-control
+    # Empty = gatewayApi.parentRefs. warehouse-infra's _platform.yaml supplies the shared Gateway here.
+    parentRefs: []
 a2a:
   enabled: false
   addr: ":8093"
@@ -89,6 +91,8 @@ a2a:
   route:
     enabled: false
     path: /api/a2a/material-flow-control
+    # Empty = gatewayApi.parentRefs. warehouse-infra's _platform.yaml supplies the shared Gateway here.
+    parentRefs: []
 gatewayApi:
   enabled: false
   parentRefs: []
@@ -96,12 +100,19 @@ gatewayApi:
     - path: /api/material-flow-control
       pathType: PathPrefix
   stripPath: true
+# Namespace-scoped KongPlugins attached to every HTTPRoute of this chart through konghq.com/plugins. All off by
+# default; warehouse-infra's values switch them on and its _platform.yaml supplies cors.origin and
+# opentelemetry.tracesEndpoint (the keys every sibling chart reads). The chart refuses an enabled cors without an
+# origin (or with "*") and an enabled opentelemetry without a traces endpoint. No credential plugin, ever.
 kongPlugins:
   cors:
     enabled: false
+    # The exact web origin, never "*".
+    origin: ""
+    # Further exact origins, granted after origin.
     origins: []
   opentelemetry:
     enabled: false
-    endpoint: ""
+    tracesEndpoint: ""
   prometheus:
     enabled: false

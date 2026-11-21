@@ -46,7 +46,7 @@ metadata:
 plugin: cors
 config:
   origins:
-    {{- range $cfg.origins }}
+    {{- range (include "material-flow-control.corsOrigins" $ | fromJsonArray) }}
     - {{ . | quote }}
     {{- end }}
   methods:
@@ -88,7 +88,7 @@ config:
 {{- else if eq $name "opentelemetry" }}
 plugin: opentelemetry
 config:
-  traces_endpoint: {{ $cfg.endpoint | quote }}
+  traces_endpoint: {{ $cfg.tracesEndpoint | quote }}
   resource_attributes:
     service.name: {{ printf "%s-kong" (include "material-flow-control.fullname" $) | quote }}
   propagation:

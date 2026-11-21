@@ -18,9 +18,9 @@ gatewayApi:
 kongPlugins:
   cors:
     enabled: true
-    origins: [https://console.example.invalid]
+    origin: https://console.example.invalid
   opentelemetry:
     enabled: true
-    endpoint: http://otel.example.invalid:4318/v1/traces
+    tracesEndpoint: http://otel.example.invalid:4318/v1/traces
   prometheus:
     enabled: true

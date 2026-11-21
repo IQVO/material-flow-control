@@ -11,13 +11,7 @@ metadata:
   {{- end }}
 spec:
   parentRefs:
-    {{- range .Values.gatewayApi.parentRefs }}
-    - name: {{ .name }}
-      namespace: {{ .namespace }}
-      {{- if .sectionName }}
-      sectionName: {{ .sectionName }}
-      {{- end }}
-    {{- end }}
+    {{- include "material-flow-control.parentRefs" .Values.gatewayApi.parentRefs | trim | nindent 4 }}
   rules:
     {{- range .Values.gatewayApi.hosts }}
     - matches:

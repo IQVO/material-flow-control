@@ -75,6 +75,43 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if lt (int .Values.terminationGracePeriodSeconds) 30 -}}
 {{- fail "terminationGracePeriodSeconds must be at least 30 (10 s HTTP drain overlapping the consumers' close and a relay pass)" -}}
 {{- end -}}
+{{- /* carry (Task 23 review): an enabled plugin needs its platform value, or Kong runs it misconfigured. */ -}}
+{{- $cors := .Values.kongPlugins.cors -}}
+{{- if $cors.enabled -}}
+{{- $origins := include "material-flow-control.corsOrigins" . | fromJsonArray -}}
+{{- if not $origins -}}
+{{- fail "kongPlugins.cors.enabled needs kongPlugins.cors.origin (the exact web origin; warehouse-infra's _platform.yaml supplies it) or kongPlugins.cors.origins" -}}
+{{- end -}}
+{{- if has "*" $origins -}}
+{{- fail "kongPlugins.cors: origin \"*\" is refused (the endpoints are unauthenticated): name the exact web origin" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.kongPlugins.opentelemetry.enabled (not .Values.kongPlugins.opentelemetry.tracesEndpoint) -}}
+{{- fail "kongPlugins.opentelemetry.enabled needs kongPlugins.opentelemetry.tracesEndpoint (warehouse-infra's _platform.yaml supplies it)" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* carry (Task 23 review): the CORS origins as a JSON list: kongPlugins.cors.origin (the platform's string key)
+first, then any kongPlugins.cors.origins entries, without duplicates. */}}
+{{- define "material-flow-control.corsOrigins" -}}
+{{- $cors := .Values.kongPlugins.cors -}}
+{{- $origins := list -}}
+{{- with $cors.origin }}{{- $origins = append $origins . -}}{{- end -}}
+{{- range $cors.origins }}{{- $origins = append $origins . -}}{{- end -}}
+{{- $origins | uniq | toJson -}}
+{{- end -}}
+
+{{/* carry (Task 23 review): a route's parentRefs (the dict passed in), rendered under spec.parentRefs. */}}
+{{- define "material-flow-control.parentRefs" -}}
+{{- range . }}
+- name: {{ .name }}
+  {{- if .namespace }}
+  namespace: {{ .namespace }}
+  {{- end }}
+  {{- if .sectionName }}
+  sectionName: {{ .sectionName }}
+  {{- end }}
+{{- end }}
 {{- end -}}
 
 {{/* The comma-separated names of the enabled KongPlugins, for each route's konghq.com/plugins annotation. */}}
