@@ -32,3 +32,17 @@ func TestARedirectIsNeverFollowedAndIsUnreachable(t *testing.T) {
 		t.Fatalf("the redirect was followed %d time(s)", n)
 	}
 }
+
+// carry (Task 14 review): 408 Request Timeout and 425 Too Early are transport answers like 429, not refusals
+// classed FINAL by their missing code.
+func TestRequestTimeoutAndTooEarlyAreUnreachableNotRefusals(t *testing.T) {
+	for _, status := range []int{http.StatusRequestTimeout, http.StatusTooEarly} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+		t.Cleanup(srv.Close)
+		err := subsystemhttp.New(srv.URL, time.Second, nil).Do(context.Background(), http.MethodPost, "/x", "k", struct{}{}, nil)
+		var r *subsystem.Refusal
+		if !errors.Is(err, subsystem.ErrUnreachable) || errors.As(err, &r) {
+			t.Fatalf("%d = %v", status, err)
+		}
+	}
+}

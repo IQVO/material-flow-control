@@ -71,7 +71,7 @@ func (c *Client) Do(ctx context.Context, method, path, key string, in, out any) 
 		return fmt.Errorf("%w: read %s %s: %v", subsystem.ErrUnreachable, method, path, err)
 	}
 	switch {
-	case resp.StatusCode >= http.StatusInternalServerError || resp.StatusCode == http.StatusTooManyRequests:
+	case resp.StatusCode >= http.StatusInternalServerError || transient(resp.StatusCode):
 		return fmt.Errorf("%w: %s %s answered %d", subsystem.ErrUnreachable, method, path, resp.StatusCode)
 	case resp.StatusCode >= http.StatusBadRequest:
 		return c.refusal(resp.StatusCode, body)
@@ -85,6 +85,12 @@ func (c *Client) Do(ctx context.Context, method, path, key string, in, out any) 
 		return fmt.Errorf("%w: decode %s %s: %v", subsystem.ErrUnreachable, method, path, err)
 	}
 	return nil
+}
+
+// transient names the 4xx answers that say "not now" rather than "no": 429, and
+// carry (Task 14 review): 408 Request Timeout and 425 Too Early.
+func transient(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusRequestTimeout || status == http.StatusTooEarly
 }
 
 func (c *Client) request(ctx context.Context, method, path, key string, in any) (*http.Request, error) {
