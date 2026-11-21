@@ -35,7 +35,9 @@ func New(baseURL string, timeout time.Duration, retryable []string) *Client {
 	for _, code := range retryable {
 		r[code] = true
 	}
-	return &Client{base: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: timeout}, retryable: r}
+	// carry (Task 14 review): never follow a redirect; a 3xx reaches Do's ErrUnreachable branch.
+	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &Client{base: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: timeout, CheckRedirect: noRedirect}, retryable: r}
 }
 
 // Path joins escaped path segments: Path("asrs", id, "storage-jobs") is "/asrs/<id>/storage-jobs".
