@@ -67,6 +67,9 @@ func (r *Tracks) Save(ctx context.Context, t *containertrack.Track) error {
 }
 
 func (r *Tracks) History(ctx context.Context, id string, limit int) ([]containertrack.Move, error) {
+	if limit <= 0 { // carry (Task 13 parity): nothing, as the memory double; Postgres refuses a negative LIMIT
+		return nil, nil
+	}
 	rows, err := queryFor(ctx, r.pool).Query(ctx, `SELECT move FROM container_moves WHERE container_id = $1 ORDER BY id DESC LIMIT $2`, id, limit)
 	if err != nil {
 		return nil, fmt.Errorf("container history: %w", err)

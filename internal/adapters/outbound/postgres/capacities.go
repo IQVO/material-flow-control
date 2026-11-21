@@ -48,8 +48,11 @@ func (r *Capacities) Save(ctx context.Context, s capacity.Snapshot) error {
 	return nil
 }
 
+// List orders bytewise (COLLATE "C"), as the memory double's sort, whatever the database's default collation.
+// carry (Task 13 parity)
 func (r *Capacities) List(ctx context.Context) ([]capacity.Snapshot, error) {
-	rows, err := queryFor(ctx, r.pool).Query(ctx, `SELECT snapshot FROM subsystem_capacities ORDER BY kind, subsystem_id`)
+	rows, err := queryFor(ctx, r.pool).Query(ctx, `SELECT snapshot FROM subsystem_capacities
+		ORDER BY kind COLLATE "C", subsystem_id COLLATE "C"`)
 	if err != nil {
 		return nil, fmt.Errorf("list capacities: %w", err)
 	}
@@ -89,8 +92,10 @@ func (r *Units) Save(ctx context.Context, u facts.EquipmentState) error {
 	return nil
 }
 
+// List orders unit ids bytewise (COLLATE "C"), as the memory double's sort. carry (Task 13 parity)
 func (r *Units) List(ctx context.Context, asrsID string) ([]facts.EquipmentState, error) {
-	rows, err := queryFor(ctx, r.pool).Query(ctx, `SELECT state FROM equipment_units WHERE asrs_id = $1 ORDER BY unit_id`, asrsID)
+	rows, err := queryFor(ctx, r.pool).Query(ctx, `SELECT state FROM equipment_units WHERE asrs_id = $1
+		ORDER BY unit_id COLLATE "C"`, asrsID)
 	if err != nil {
 		return nil, fmt.Errorf("list equipment units: %w", err)
 	}

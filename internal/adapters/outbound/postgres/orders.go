@@ -44,8 +44,9 @@ func (r *Orders) ByLegRef(ctx context.Context, ref string) (*transportorder.Orde
 }
 
 func (r *Orders) Open(ctx context.Context) ([]*transportorder.Order, error) {
-	rows, err := queryFor(ctx, r.pool).Query(ctx, `SELECT snapshot FROM transport_orders WHERE status = 'IN_PROGRESS'
-		ORDER BY accepted_at, transport_order_id`)
+	// carry (Task 13 parity): insertion (= acceptance) order, as the memory double; an accepted_at tie no longer
+	// falls back to the id order.
+	rows, err := queryFor(ctx, r.pool).Query(ctx, `SELECT snapshot FROM transport_orders WHERE status = 'IN_PROGRESS' ORDER BY seq`)
 	if err != nil {
 		return nil, fmt.Errorf("list open orders: %w", err)
 	}

@@ -30,6 +30,9 @@ func (r *Commands) Enqueue(ctx context.Context, c command.Command) error {
 }
 
 func (r *Commands) Due(ctx context.Context, now time.Time, limit int) ([]command.Command, error) {
+	if limit <= 0 { // carry (Task 13 parity): nothing, as the memory double; Postgres refuses a negative LIMIT
+		return nil, nil
+	}
 	rows, err := queryFor(ctx, r.pool).Query(ctx, `SELECT seq, command_id, transport_order_id, leg_ref, kind, idempotency_key, status,
 		attempts, created_at, next_attempt_at, deadline, last_error FROM subsystem_commands
 		WHERE status = 'PENDING' AND next_attempt_at <= $1 ORDER BY seq LIMIT $2`, now.UTC(), limit)

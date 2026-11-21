@@ -16,8 +16,10 @@ CREATE TABLE transport_requests (
     recorded_at          TIMESTAMPTZ NOT NULL
 );
 
+-- seq is the insertion order, which is the acceptance order: Open lists by it, as the memory double does.
 CREATE TABLE transport_orders (
     transport_order_id   TEXT COLLATE "C" PRIMARY KEY,
+    seq                  BIGSERIAL   NOT NULL UNIQUE,
     transport_request_id TEXT,
     container_id         TEXT        NOT NULL,
     status               TEXT        NOT NULL,
@@ -27,7 +29,7 @@ CREATE TABLE transport_orders (
     accepted_at          TIMESTAMPTZ NOT NULL,
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_transport_orders_open ON transport_orders (accepted_at, transport_order_id) WHERE status = 'IN_PROGRESS';
+CREATE INDEX idx_transport_orders_open ON transport_orders (seq) WHERE status = 'IN_PROGRESS';
 
 -- transport_legs: leg reference -> order, the key every subsystem fact is matched by (ADR 0002 decision 3).
 CREATE TABLE transport_legs (
