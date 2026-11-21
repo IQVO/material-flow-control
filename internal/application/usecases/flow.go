@@ -226,7 +226,8 @@ func (f *flow) clarify(o *transportorder.Order, c containertrack.Clarification, 
 	if err := f.fail(o, reason, sub); err != nil {
 		return err
 	}
-	if at.Kind == layout.PlacePort && at.PortKind == layout.PortOutput && t.Position() == containertrack.At(at) {
+	// carry (Task 9 review note): a held container already has its clarification move; build no second one.
+	if !held && at.Kind == layout.PlacePort && at.PortKind == layout.PortOutput && t.Position() == containertrack.At(at) {
 		clr := f.s.l.ClarificationPoint()
 		plan := []routing.LegPlan{{Subsystem: routing.SubsystemAmr, SubsystemID: f.s.l.Fleet().FleetID, Kind: routing.KindMove, From: at, To: clr}}
 		io, err := transportorder.NewInternal("to-"+f.s.d.IDs.NewID(), o.ContainerID(), at, clr, plan, f.now)
