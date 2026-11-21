@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-// Dependency is one thing /readyz needs: Postgres, Kafka, every MQTT link.
+// Dependency is one thing /readyz needs: Postgres or Kafka (this service has no MQTT link).
+// carry (Task 18 review): comment reworded.
 type Dependency struct {
 	Name  string
 	Check func(ctx context.Context) error

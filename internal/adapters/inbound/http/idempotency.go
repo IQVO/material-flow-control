@@ -32,11 +32,13 @@ var (
 
 // Idempotency is the fleet Idempotency-Key middleware with replay classes. The handler runs in
 // one unit of work (the use cases join it): a 2xx is stored in that transaction; a refusal rolls
-// it back, and is then stored on its own only when FINAL; an OUTCOME refusal (marked by writeProblem) keeps its
-// writes: it is stored in the SAME transaction, which commits; a RETRYABLE refusal (marked by
-// writeProblem), a 5xx and a panic are never stored, so the key is released. This unit of work
-// is the OUTERMOST one of a REST call, so the PLC commands the use cases register with
-// UoW.AfterCommit go out only after it committed, and never for a rolled-back request.
+// it back, and is then stored on its own only when FINAL; an OUTCOME refusal (a rejection, marked
+// by writeRejection) keeps its writes: it is stored in the SAME transaction, which commits; a
+// RETRYABLE refusal (marked by writeProblem), a 5xx and a panic are never stored, so the key is
+// released. This unit of work is the OUTERMOST one of a REST call, so the subsystem commands the
+// use cases queue (subsystem_commands rows, sent later by the dispatcher) commit with the answer
+// and never exist for a rolled-back request; only the dispatcher kick and the transport counter run
+// as UoW.AfterCommit hooks. carry (Task 18 review): comment reworded.
 type Idempotency struct {
 	Store  ports.IdempotencyStore
 	UoW    ports.UnitOfWork
