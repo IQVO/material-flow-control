@@ -96,6 +96,21 @@ type Layout struct {
 	inputs    map[string][]Place
 }
 
+// carry (Task 2 review): an id that is only whitespace is missing.
+func blank(id string) bool { return strings.TrimSpace(id) == "" }
+
+// carry (Task 2 review): New keeps a deep copy of the caller's Spec, so a Layout is immutable after New.
+func cloneSpec(s Spec) Spec {
+	s.Asrs = append([]Asrs(nil), s.Asrs...)
+	for i := range s.Asrs {
+		s.Asrs[i].Ports = append([]Port(nil), s.Asrs[i].Ports...)
+	}
+	s.Stations = append([]Station(nil), s.Stations...)
+	s.Handoffs = append([]Handoff(nil), s.Handoffs...)
+	s.ClarificationPoints = append([]ClarificationPoint(nil), s.ClarificationPoints...)
+	return s
+}
+
 func invalid(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, args...))
 }
@@ -105,15 +120,16 @@ func New(s Spec) (*Layout, error) {
 	if err := checkHeader(s); err != nil {
 		return nil, err
 	}
+	s = cloneSpec(s)
 	l := &Layout{spec: s, byRef: map[string]Place{}, byHandoff: map[string]Place{}, ports: map[string]Place{},
 		asrs: map[string]Asrs{}, stations: map[string]Station{}, inputs: map[string][]Place{}}
-	for _, a := range s.Asrs {
-		if err := l.addAsrs(a); err != nil {
+	for i, a := range s.Asrs {
+		if err := l.addAsrs(i, a); err != nil {
 			return nil, err
 		}
 	}
-	for _, st := range s.Stations {
-		if err := l.addStation(st); err != nil {
+	for i, st := range s.Stations {
+		if err := l.addStation(i, st); err != nil {
 			return nil, err
 		}
 	}
@@ -132,10 +148,10 @@ func New(s Spec) (*Layout, error) {
 }
 
 func checkHeader(s Spec) error {
-	if strings.TrimSpace(s.SiteID) == "" {
+	if blank(s.SiteID) {
 		return invalid("siteId is required")
 	}
-	if s.Fleet.FleetID == "" {
+	if blank(s.Fleet.FleetID) {
 		return invalid("fleet.fleetId is required")
 	}
 	if s.Fleet.LegsPerRobotHour < 1 {
@@ -151,7 +167,7 @@ func checkHeader(s Spec) error {
 }
 
 func (l *Layout) addRef(ref string, p Place) error {
-	if ref == "" {
+	if blank(ref) {
 		return invalid("a location code is required (%s %s)", p.Kind, p.Code)
 	}
 	if _, dup := l.byRef[ref]; dup {
@@ -162,7 +178,7 @@ func (l *Layout) addRef(ref string, p Place) error {
 }
 
 func (l *Layout) addHandoffPoint(id string, p Place) error {
-	if id == "" {
+	if blank(id) {
 		return invalid("handoff point id is required (%s %s)", p.Kind, p.Code)
 	}
 	if _, dup := l.byHandoff[id]; dup {
@@ -179,9 +195,9 @@ func (l *Layout) addAMRPlace(ref string, p Place) error {
 	return l.addRef(ref, p)
 }
 
-func (l *Layout) addAsrs(a Asrs) error {
-	if a.AsrsID == "" || a.LocationCode == "" {
-		return invalid("an AS/RS needs asrsId and locationCode")
+func (l *Layout) addAsrs(i int, a Asrs) error {
+	if blank(a.AsrsID) || blank(a.LocationCode) {
+		return invalid("an AS/RS needs asrsId and locationCode (asrs[%d], asrsId %q, locationCode %q)", i, a.AsrsID, a.LocationCode)
 	}
 	if a.RetrievalsPerUnitHour < 1 {
 		return invalid("AS/RS %s: retrievalsPerUnitHour must be at least 1", a.AsrsID)
@@ -193,8 +209,8 @@ func (l *Layout) addAsrs(a Asrs) error {
 		return err
 	}
 	in, out := 0, 0
-	for _, p := range a.Ports {
-		if err := l.addPort(a.AsrsID, p); err != nil {
+	for j, p := range a.Ports {
+		if err := l.addPort(a.AsrsID, j, p); err != nil {
 			return err
 		}
 		if p.Kind == PortInput {
@@ -210,9 +226,9 @@ func (l *Layout) addAsrs(a Asrs) error {
 	return nil
 }
 
-func (l *Layout) addPort(asrsID string, p Port) error {
-	if p.PortID == "" {
-		return invalid("AS/RS %s: a port needs portId", asrsID)
+func (l *Layout) addPort(asrsID string, j int, p Port) error {
+	if blank(p.PortID) {
+		return invalid("AS/RS %s: a port needs portId (ports[%d], locationCode %q)", asrsID, j, p.LocationCode)
 	}
 	if p.Kind != PortInput && p.Kind != PortOutput {
 		return invalid("AS/RS %s port %s: kind must be INPUT or OUTPUT", asrsID, p.PortID)
@@ -232,9 +248,9 @@ func (l *Layout) addPort(asrsID string, p Port) error {
 	return nil
 }
 
-func (l *Layout) addStation(st Station) error {
-	if st.StationID == "" {
-		return invalid("a station needs stationId")
+func (l *Layout) addStation(i int, st Station) error {
+	if blank(st.StationID) {
+		return invalid("a station needs stationId (stations[%d], locationCode %q)", i, st.LocationCode)
 	}
 	if st.BufferLimit < 1 {
 		return invalid("station %s: bufferLimit must be at least 1", st.StationID)
@@ -243,7 +259,7 @@ func (l *Layout) addStation(st Station) error {
 	if err := l.addAMRPlace(st.StationID, p); err != nil {
 		return err
 	}
-	if st.LocationCode != "" {
+	if !blank(st.LocationCode) {
 		if err := l.addRef(st.LocationCode, p); err != nil {
 			return err
 		}
@@ -295,9 +311,10 @@ func (l *Layout) AsrsPlace(asrsID string) (Place, bool) {
 	return l.byRef[a.LocationCode], true
 }
 
-// Asrs returns one AS/RS as configured.
+// Asrs returns one AS/RS as configured, with its own copy of the ports.
 func (l *Layout) Asrs(asrsID string) (Asrs, bool) {
 	a, ok := l.asrs[asrsID]
+	a.Ports = append([]Port(nil), a.Ports...) // carry (Task 2 review): never hand out the layout's slice
 	return a, ok
 }
 
