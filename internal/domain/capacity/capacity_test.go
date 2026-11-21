@@ -99,3 +99,20 @@ func TestOnlyAChangeOfAPublishedFieldIsPublished(t *testing.T) {
 		t.Fatal("SameFacts")
 	}
 }
+
+// carry (Task 7 review): every published count clamps to 0 (D17), copied and never recomputed.
+func TestEveryPublishedCountClampsToZero(t *testing.T) {
+	fleet := capacity.Fleet("F", -1, 1, 0, 0, 0, 30, t0)
+	wantFleet := capacity.Snapshot{Kind: capacity.KindAmrFleet, ID: "F", Status: capacity.StatusAvailable, MeasuredAt: t0}
+	if fleet != wantFleet {
+		t.Errorf("a negative robots_total with a robot online = %+v, want %+v (available 0 of 0)", fleet, wantFleet)
+	}
+	if s := capacity.Asrs("A", -2, 0, 0, 60, t0); s.UnitsTotal != 0 || s.Status != capacity.StatusUnavailable {
+		t.Errorf("a negative units_total = %+v", s)
+	}
+	station := capacity.Station("S", -1, -2, -3, t0)
+	wantStation := capacity.Snapshot{Kind: capacity.KindStation, ID: "S", Status: capacity.StatusAvailable, MeasuredAt: t0}
+	if station != wantStation {
+		t.Errorf("negative station counts = %+v, want %+v", station, wantStation)
+	}
+}

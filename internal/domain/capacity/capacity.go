@@ -63,8 +63,8 @@ func status(available, total int, unavailable bool) Status {
 // asrs-control's units_available (not HELD: an aisle unit queues jobs, so a working unit is dispatchable),
 // openJobs its queued + executing jobs. Unavailable when no unit is available; a units_total of 0 is accepted.
 func Asrs(asrsID string, unitsTotal, unitsAvailable, openJobs, perUnitHour int, at time.Time) Snapshot {
-	avail := nonNegative(unitsAvailable)
-	return Snapshot{Kind: KindAsrs, ID: asrsID, Status: status(avail, unitsTotal, avail == 0), UnitsTotal: unitsTotal,
+	avail, total := nonNegative(unitsAvailable), nonNegative(unitsTotal) // carry (Task 7 review): every count clamps (D17)
+	return Snapshot{Kind: KindAsrs, ID: asrsID, Status: status(avail, total, avail == 0), UnitsTotal: total,
 		UnitsAvailable: avail, OpenWork: nonNegative(openJobs), CapacityPerHour: avail * perUnitHour, MeasuredAt: at}
 }
 
@@ -73,13 +73,15 @@ func Asrs(asrsID string, unitsTotal, unitsAvailable, openJobs, perUnitHour int, 
 // Unavailable only when no robot is online (amr-fleet-control then refuses every leg with fleet-unavailable),
 // which includes a fleet of 0 robots (accepted, every count 0); degraded when fewer robots are available than exist.
 func Fleet(fleetID string, total, online, available, queued, active, perRobotHour int, at time.Time) Snapshot {
-	avail := nonNegative(available)
-	return Snapshot{Kind: KindAmrFleet, ID: fleetID, Status: status(avail, total, online <= 0), UnitsTotal: total,
+	avail, units := nonNegative(available), nonNegative(total) // carry (Task 7 review): every count clamps (D17)
+	return Snapshot{Kind: KindAmrFleet, ID: fleetID, Status: status(avail, units, online <= 0), UnitsTotal: units,
 		UnitsAvailable: avail, OpenWork: nonNegative(queued) + nonNegative(active), CapacityPerHour: avail * perRobotHour, MeasuredAt: at}
 }
 
 // Station is a station snapshot: degraded while arrivals wait upstream for a slot.
 func Station(stationID string, limit, occupied, waiting int, at time.Time) Snapshot {
+	// carry (Task 7 review): every count clamps to 0 (D17); open work and free slots follow the clamped counts.
+	limit, occupied, waiting = nonNegative(limit), nonNegative(occupied), nonNegative(waiting)
 	st := StatusAvailable
 	if waiting > 0 {
 		st = StatusDegraded
