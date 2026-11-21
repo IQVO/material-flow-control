@@ -87,3 +87,13 @@ func TestAZeroAttemptCapIsABootErrorAndAZeroRetryLimitIsNot(t *testing.T) {
 		t.Fatalf("LEG_RETRY_LIMIT=0: %+v, %v, want accepted as 0", c.UseCases, err)
 	}
 }
+
+// carry (Task 19 review): one boot error names EVERY missing mandatory variable at once.
+func TestAnEmptyEnvironmentNamesEveryMandatoryVariableAtOnce(t *testing.T) {
+	_, err := loadConfig(env(map[string]string{}))
+	for _, name := range []string{"DATABASE_URL", "KAFKA_BROKERS", "ASRS_CONTROL_URL", "AMR_FLEET_CONTROL_URL", "MFC_LAYOUT_FILE"} {
+		if err == nil || !strings.Contains(err.Error(), name) {
+			t.Fatalf("err = %v, want it to name %s", err, name)
+		}
+	}
+}

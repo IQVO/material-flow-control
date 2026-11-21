@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/adapters/outbound/postgres"
+	"github.com/IQVO/material-flow-control/internal/adapters/outbound/postgres/pgtx"
 	"github.com/IQVO/material-flow-control/internal/application/outbox"
 	"github.com/IQVO/material-flow-control/internal/testing/pgtest"
 )
@@ -90,5 +91,27 @@ func assertTimedOut(t *testing.T, name string, err error, elapsed time.Duration)
 	var pg interface{ SQLState() string } // *pgconn.PgError
 	if !errors.As(err, &pg) || (pg.SQLState() != "55P03" && pg.SQLState() != "57014") || elapsed > 6500*time.Millisecond {
 		t.Errorf("%s = %v after %v; want SQLSTATE 55P03 (lock_timeout) or 57014 (statement_timeout) within ~6 s", name, err, elapsed)
+	}
+}
+
+// carry (Task 19 review): inside a unit BOTH timeouts are set (the flow-lock test cannot tell lock_timeout
+// from statement_timeout: both are 5 s and it accepts 55P03 or 57014).
+func TestAUnitStatesBothTimeouts(t *testing.T) {
+	pool := pgtest.BarePool(t)
+	err := postgres.NewUnitOfWork(pool).Do(context.Background(), func(ctx context.Context) error {
+		tx, ok := pgtx.From(ctx)
+		if !ok {
+			t.Fatal("no tx in the unit's ctx")
+		}
+		for _, s := range []string{"statement_timeout", "lock_timeout"} {
+			var v string
+			if err := tx.QueryRow(ctx, "SHOW "+s).Scan(&v); err != nil || v != "5s" {
+				t.Errorf("%s inside a unit = %q (%v), want 5s", s, v, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
