@@ -112,3 +112,54 @@ func TestAReplacedFailedLegIsSkippedAndTheOrderCompletes(t *testing.T) {
 		t.Fatalf("Complete = %v %s", err, o.Status())
 	}
 }
+
+// carry (Task 6 review): a fact ends only a leg of its own kind. Delivered, PickedUp and Assigned need a MOVE,
+// Presented a RETRIEVE, Stored a STORE; any other leg is refused with ErrWrongLeg and keeps its status.
+func TestAFactOfTheWrongKindLeavesTheLegUnchanged(t *testing.T) {
+	o := accept(t, tr.PurposePick, asrs, station, pickPlan())
+	retrieve, _ := o.Next(t0)
+	wrongForRetrieve := map[string]error{
+		"Delivered": o.Delivered(retrieve.Ref, t0),
+		"Stored":    o.Stored(retrieve.Ref, t0),
+		"PickedUp":  o.PickedUp(retrieve.Ref, "EMU/R1", t0),
+		"Assigned":  o.Assigned(retrieve.Ref, "EMU/R1", t0),
+	}
+	for fact, err := range wrongForRetrieve {
+		if !errors.Is(err, to.ErrWrongLeg) {
+			t.Errorf("%s(retrieve) = %v, want ErrWrongLeg", fact, err)
+		}
+	}
+	if l, _ := o.LegByRef(retrieve.Ref); l.Status != to.LegPending || l.Robot != "" {
+		t.Fatalf("the refused facts changed the retrieve: %+v", l)
+	}
+	must(t, o.Presented(retrieve.Ref, out1, t0))
+	o.Next(t0)
+	move, err := o.Admitted(t0)
+	must(t, err)
+	if err := o.Stored(move.Ref, t0); !errors.Is(err, to.ErrWrongLeg) {
+		t.Fatalf("Stored(move) = %v, want ErrWrongLeg", err)
+	}
+	if err := o.Presented(move.Ref, out1, t0); !errors.Is(err, to.ErrWrongLeg) {
+		t.Fatalf("Presented(move) = %v, want ErrWrongLeg", err)
+	}
+	if l, _ := o.LegByRef(move.Ref); l.Status != to.LegPending || l.To != station {
+		t.Fatalf("the refused facts changed the move: %+v", l)
+	}
+	must(t, o.Delivered(move.Ref, t0))
+}
+
+// carry (Task 6 review): a MOVE fact never ends a STORE.
+func TestDeliveredNeverEndsAStore(t *testing.T) {
+	o := accept(t, tr.PurposePutaway, decant, asrs, putawayPlan())
+	move, _ := o.Next(t0)
+	must(t, o.ResolveTo(move.Ref, in1))
+	must(t, o.Delivered(move.Ref, t0))
+	store, _ := o.Next(t0)
+	if err := o.Delivered(store.Ref, t0); !errors.Is(err, to.ErrWrongLeg) {
+		t.Fatalf("Delivered(store) = %v, want ErrWrongLeg", err)
+	}
+	if l, _ := o.LegByRef(store.Ref); l.Status != to.LegPending {
+		t.Fatalf("the store = %+v", l)
+	}
+	must(t, o.Stored(store.Ref, t0))
+}

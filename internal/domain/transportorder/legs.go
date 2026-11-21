@@ -1,12 +1,17 @@
 package transportorder
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/domain/layout"
 	"github.com/IQVO/material-flow-control/internal/domain/routing"
 )
+
+// ErrWrongLeg refuses a fact that does not end this kind of leg (carry, Task 6 review): Delivered, PickedUp and
+// Assigned need a MOVE, Presented a RETRIEVE, Stored a STORE.
+var ErrWrongLeg = errors.New("the fact does not match the leg's kind")
 
 // LegStatus is one leg attempt's state.
 type LegStatus string
@@ -74,6 +79,28 @@ func (o *Order) inFlight(ref string) (*Leg, error) {
 	return nil, ErrUnknownLeg
 }
 
+// inFlightAs is inFlight for a fact that ends or advances only one kind of leg (carry, Task 6 review).
+func (o *Order) inFlightAs(ref string, kind routing.LegKind) (*Leg, error) {
+	l, err := o.inFlight(ref)
+	if err != nil {
+		return nil, err
+	}
+	if l.Kind != kind {
+		return nil, ErrWrongLeg
+	}
+	return l, nil
+}
+
+// finishAs ends a leg of one kind DONE (carry, Task 6 review).
+func (o *Order) finishAs(ref string, kind routing.LegKind, at time.Time) (*Leg, error) {
+	l, err := o.inFlightAs(ref, kind)
+	if err != nil {
+		return nil, err
+	}
+	l.Status, l.UpdatedAt, l.EndedAt = LegDone, at, at
+	return l, nil
+}
+
 func (o *Order) finish(ref string, status LegStatus, at time.Time) (*Leg, error) {
 	l, err := o.inFlight(ref)
 	if err != nil {
@@ -116,7 +143,7 @@ func (o *Order) ResolveTo(ref string, p layout.Place) error {
 
 // Assigned records the robot of an AMR leg.
 func (o *Order) Assigned(ref, robot string, at time.Time) error {
-	l, err := o.inFlight(ref)
+	l, err := o.inFlightAs(ref, routing.KindMove) // carry (Task 6 review)
 	if err != nil {
 		return err
 	}
@@ -129,7 +156,7 @@ func (o *Order) Assigned(ref, robot string, at time.Time) error {
 
 // PickedUp records that the container is on the robot.
 func (o *Order) PickedUp(ref, robot string, at time.Time) error {
-	l, err := o.inFlight(ref)
+	l, err := o.inFlightAs(ref, routing.KindMove) // carry (Task 6 review)
 	if err != nil {
 		return err
 	}
@@ -139,7 +166,7 @@ func (o *Order) PickedUp(ref, robot string, at time.Time) error {
 
 // Presented ends a RETRIEVE at the output port it was presented at.
 func (o *Order) Presented(ref string, port layout.Place, at time.Time) error {
-	l, err := o.finish(ref, LegDone, at)
+	l, err := o.finishAs(ref, routing.KindRetrieve, at) // carry (Task 6 review)
 	if err != nil {
 		return err
 	}
@@ -149,13 +176,13 @@ func (o *Order) Presented(ref string, port layout.Place, at time.Time) error {
 
 // Delivered ends a MOVE at its destination (amr-fleet-control LegCompleted).
 func (o *Order) Delivered(ref string, at time.Time) error {
-	_, err := o.finish(ref, LegDone, at)
+	_, err := o.finishAs(ref, routing.KindMove, at) // carry (Task 6 review)
 	return err
 }
 
 // Stored ends a STORE (asrs-control ContainerStored).
 func (o *Order) Stored(ref string, at time.Time) error {
-	_, err := o.finish(ref, LegDone, at)
+	_, err := o.finishAs(ref, routing.KindStore, at) // carry (Task 6 review)
 	return err
 }
 
