@@ -80,7 +80,8 @@ func Plan(l *layout.Layout, src, dst layout.Place) ([]LegPlan, error) {
 }
 
 // StoreViaOtherInput re-plans a store whose input port failed (decision D13): a MOVE from the failed input port
-// to the next input port of the same AS/RS in layout order, then a STORE there.
+// to the first other input port of the same AS/RS in layout order, then a STORE there. It keeps no memory across
+// re-plans; the re-plan-once bound is the caller's (carry, Task 3 review).
 func StoreViaOtherInput(l *layout.Layout, failed, asrs layout.Place) ([]LegPlan, error) {
 	for _, in := range l.InputPorts(asrs.AsrsID) {
 		if in.PortID == failed.PortID {
