@@ -159,3 +159,31 @@ func TestANegativeFleetCountReachesTheUseCaseForTheClamp(t *testing.T) {
 		t.Fatalf("err %v, calls %+v, want %+v", err, r.calls, want)
 	}
 }
+
+// ruling P4-R9: map_version is a string in plan 03 (the producer); null, empty or a number is poison.
+func TestAMapVersionThatIsNotANonEmptyStringIsPoison(t *testing.T) {
+	p := amrFixtures(t)[TypeLegAssigned]
+	if got := p["data"].(map[string]any)["map_version"]; got != "v1" {
+		t.Fatalf("fixture map_version = %#v, want \"v1\" (ruling P4-R9)", got)
+	}
+	for _, tc := range []struct {
+		name string
+		v    any
+	}{{"null", nil}, {"empty", ""}, {"an integer", 1}} {
+		assertPoison(t, AmrHandlers, withField(t, p, "map_version", tc.v), "LegAssigned with map_version "+tc.name)
+	}
+}
+
+// withField re-encodes the CloudEvent example p with data field f set to v.
+func withField(t *testing.T, p map[string]any, f string, v any) []byte {
+	t.Helper()
+	data := maps.Clone(p["data"].(map[string]any))
+	data[f] = v
+	ev := maps.Clone(p)
+	ev["data"] = data
+	b, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}

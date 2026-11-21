@@ -2,7 +2,6 @@ package kafka
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -29,7 +28,7 @@ func handle[T payload](apply func(ctx context.Context, eventID, eventType string
 }
 
 // required fails when a required string is empty, a required time is zero or a required number or boolean is
-// absent (a nil *int or *bool, an absent or null raw value; carry (Task 15 review)): pairs of name and value.
+// absent (a nil *int or *bool; carry (Task 15 review)): pairs of name and value.
 func required(pairs ...any) error {
 	var missing []string
 	for i := 0; i+1 < len(pairs); i += 2 {
@@ -53,8 +52,6 @@ func absent(v any) bool {
 		return v == nil
 	case *bool:
 		return v == nil
-	case json.RawMessage:
-		return len(v) == 0 || string(v) == "null"
 	}
 	return false
 }

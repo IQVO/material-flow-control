@@ -2,19 +2,21 @@ package kafka
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/application/facts"
 )
 
-// The amr-fleet-control payloads (plan 03's relationship-4 event fields; pinned in Task 24). robot_timestamp and
-// map_version are ignored (tolerant reader).
+// The amr-fleet-control payloads (plan 03's relationship-4 event fields; pinned in Task 24). robot_timestamp is
+// ignored and map_version is checked but not applied (tolerant reader).
 //
-// carry (Task 15 review): every field plan 03's Task 13 schema table requires is required here (map_version too:
-// a string in plan 03, an integer in this fixture: only its presence is required), a present robot needs both of its fields, and counts are *int so an
-// absent one is poison while a negative one still reaches the capacity clamp (D17).
+// carry (Task 15 review): every field plan 03's Task 13 schema table requires is required here, a present robot needs
+// both of its fields, and counts are *int so an absent one is poison while a negative one still reaches the capacity
+// clamp (D17).
+//
+// ruling P4-R9: map_version is a required non-empty string, as plan 03 (the producer) types it; null, "" or a number
+// is poison.
 
 type robotRef struct {
 	Manufacturer string `json:"manufacturer"`
@@ -40,15 +42,15 @@ func (r *robotRef) id() string {
 }
 
 type legAssignedData struct {
-	LegID       string          `json:"leg_id"`
-	FleetID     string          `json:"fleet_id"`
-	ContainerID string          `json:"container_id"`
-	From        string          `json:"from_handoff_point_id"`
-	To          string          `json:"to_handoff_point_id"`
-	Reference   string          `json:"reference"`
-	Robot       *robotRef       `json:"robot"`
-	MapVersion  json.RawMessage `json:"map_version"`
-	AssignedAt  time.Time       `json:"assigned_at"`
+	LegID       string    `json:"leg_id"`
+	FleetID     string    `json:"fleet_id"`
+	ContainerID string    `json:"container_id"`
+	From        string    `json:"from_handoff_point_id"`
+	To          string    `json:"to_handoff_point_id"`
+	Reference   string    `json:"reference"`
+	Robot       *robotRef `json:"robot"`
+	MapVersion  string    `json:"map_version"` // ruling P4-R9
+	AssignedAt  time.Time `json:"assigned_at"`
 }
 
 func (d legAssignedData) check() error {

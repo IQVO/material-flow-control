@@ -3,7 +3,7 @@
    "type": "com.warehouse.wes.amr-fleet-control.mission.LegAssigned", "subject": "leg-1", "time": "2026-11-20T08:00:01Z",
    "datacontenttype": "application/json", "dataschema": "urn:warehouse:amr-fleet-control:events:LegAssigned:v1",
    "data": {"leg_id": "leg-1", "fleet_id": "AMR1", "container_id": "C-1", "from_handoff_point_id": "ASRS1-OUT1", "to_handoff_point_id": "ST1",
-            "reference": "to-1.2.1", "robot": {"manufacturer": "EMU", "serial_number": "R1"}, "map_version": 1, "assigned_at": "2026-11-20T08:00:01Z"}},
+            "reference": "to-1.2.1", "robot": {"manufacturer": "EMU", "serial_number": "R1"}, "map_version": "v1", "assigned_at": "2026-11-20T08:00:01Z"}},
   {"specversion": "1.0", "id": "a1111111-0000-4000-8000-000000000002", "source": "/warehouse/amr-fleet-control",
    "type": "com.warehouse.wes.amr-fleet-control.mission.ContainerPickedUp", "subject": "leg-1", "time": "2026-11-20T08:00:01Z",
    "datacontenttype": "application/json", "dataschema": "urn:warehouse:amr-fleet-control:events:ContainerPickedUp:v1",
