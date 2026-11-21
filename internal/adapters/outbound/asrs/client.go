@@ -14,7 +14,9 @@ import (
 // Retryable lists asrs-control's RETRYABLE refusals ("RETRYABLE refusals release the key, so a retry under the
 // same key executes again"); every other problem code is FINAL.
 var Retryable = []string{"unknown-container", "container-busy", "container-already-stored", "storage-full",
-	"aisle-unavailable", "port-unreachable", "port-not-presenting"}
+	"aisle-unavailable", "port-unreachable", "port-not-presenting",
+	// carry (Task 8 review): the two cancellation refusals are RETRYABLE in the openapi and errors.go (409).
+	"job-not-cancellable", "job-ended"}
 
 // Client calls asrs-control.
 type Client struct{ c *subsystemhttp.Client }
