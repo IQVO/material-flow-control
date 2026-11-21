@@ -17,7 +17,7 @@
 //	DATABASE_URL                 REQUIRED. the Postgres DSN cmd/api owns
 //	MIGRATIONS_DATABASE_URL      direct DSN for the boot migrations (default DATABASE_URL)
 //	MFC_LAYOUT_FILE              REQUIRED. the material-flow layout YAML (ADR 0002), the same file cmd/api reads
-//	LOG_LEVEL                    debug | info | warn | error (default info)
+//	LOG_LEVEL                    debug | info | warn | error, any case (default info; another value is a boot error)
 //	OTEL_SERVICE_NAME            service.name (default material-flow-control-a2a)
 //	OTEL_EXPORTER_OTLP_ENDPOINT  Collector OTLP/gRPC endpoint; empty = telemetry off (ADR 0007)
 //	SERVICE_VERSION              service.version and the Agent Card version (default dev)
@@ -42,6 +42,7 @@ import (
 	inbounda2a "github.com/IQVO/material-flow-control/internal/adapters/inbound/a2a"
 	"github.com/IQVO/material-flow-control/internal/adapters/outbound/postgres"
 	"github.com/IQVO/material-flow-control/internal/adapters/outbound/system"
+	"github.com/IQVO/material-flow-control/internal/adapters/outbound/telemetry"
 	"github.com/IQVO/material-flow-control/internal/application/usecases"
 	layoutconfig "github.com/IQVO/material-flow-control/internal/config"
 )
@@ -75,6 +76,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	}
 	if c.LayoutFile == "" {
 		problems = append(problems, errors.New("MFC_LAYOUT_FILE is required: the A2A agent reads the same layout as cmd/api"))
+	}
+	// carry (plan 03 Task 16 review parity): a set-but-unknown LOG_LEVEL is a boot error, never a silent info.
+	if _, err := telemetry.ParseLogLevel(c.LogLevel); err != nil {
+		problems = append(problems, err)
 	}
 	return c, errors.Join(problems...)
 }

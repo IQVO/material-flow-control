@@ -24,7 +24,7 @@ are trimmed of surrounding spaces; an empty value counts as unset.
 | `AMR_FLEET_CONTROL_URL` | required | Base URL of amr-fleet-control (relationship 4), e.g. `http://amr-fleet-control.warehouse-systems.svc.cluster.local`. |
 | `MFC_LAYOUT_FILE` | required | Path of the material-flow layout YAML (below). |
 | `ADDR` | `:8080` | HTTP listen address. |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` (or `warning`), `error`. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` (or `warning`), `error`, in any case; any other value is a boot error naming it. |
 | `MFC_ASRS_CONSUMER_GROUP` | `material-flow-control.asrs-control-events` | Consumer group of `warehouse.asrs-control.events`. |
 | `MFC_AMR_CONSUMER_GROUP` | `material-flow-control.amr-fleet-control-events` | Consumer group of `warehouse.amr-fleet-control.events`. |
 | `OUTBOX_INTERVAL_MS` | `250` | Relay poll interval. Positive integer. |
@@ -42,7 +42,8 @@ are trimmed of surrounding spaces; an empty value counts as unset.
 | `ENVIRONMENT` | `local` | `deployment.environment.name` (read by the telemetry adapter). |
 
 A positive-integer variable set to `0`, a negative number or a non-number is a boot error naming it; `LEG_RETRY_LIMIT`
-refuses only negatives and non-numbers.
+refuses only negatives and non-numbers. A `LOG_LEVEL` that is set but names no level is a boot error in all three
+binaries, never a silent fallback to `info`.
 
 ## cmd/mcp
 

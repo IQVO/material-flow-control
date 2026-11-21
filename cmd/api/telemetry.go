@@ -51,14 +51,6 @@ func observeOutbox(log *slog.Logger, m *telemetry.TransportMetrics, read telemet
 // newLoggerTo is the JSON logger on w at level, stamping trace_id/span_id on every record
 // written under a span.
 func newLoggerTo(w io.Writer, level string) *slog.Logger {
-	lv := slog.LevelInfo
-	switch level {
-	case "debug":
-		lv = slog.LevelDebug
-	case "warn", "warning":
-		lv = slog.LevelWarn
-	case "error":
-		lv = slog.LevelError
-	}
+	lv, _ := telemetry.ParseLogLevel(level) // validated by loadConfig; the boot logger passes "info"
 	return slog.New(telemetry.WithTraceContext(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lv})))
 }

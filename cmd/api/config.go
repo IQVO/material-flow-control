@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IQVO/material-flow-control/internal/adapters/outbound/telemetry"
 	"github.com/IQVO/material-flow-control/internal/application/usecases"
 )
 
@@ -99,6 +100,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	c.UseCases.LegRetryLimit = r.num("LEG_RETRY_LIMIT", c.UseCases.LegRetryLimit)
 	c.UseCases.LegRequestDeadline = r.dur("LEG_REQUEST_DEADLINE_SECONDS", 300, time.Second)
 	c.UseCases.LegTimeout = r.dur("LEG_TIMEOUT_SECONDS", 900, time.Second)
+	// carry (plan 03 Task 16 review parity): a set-but-unknown LOG_LEVEL is a boot error, never a silent info.
+	if _, err := telemetry.ParseLogLevel(c.LogLevel); err != nil {
+		r.errs = append(r.errs, err)
+	}
 	if err := errors.Join(r.errs...); err != nil {
 		return config{}, fmt.Errorf("material-flow-control config: %w", err)
 	}
