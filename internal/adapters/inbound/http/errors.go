@@ -35,6 +35,7 @@ var (
 	internalProblem        = problem{http.StatusInternalServerError, "internal-error", "Internal server error", classRetryable}
 	dependencyUnavailable  = problem{http.StatusServiceUnavailable, "dependency-unavailable", "A runtime dependency is unavailable", classRetryable}
 	idempotencyKeyRequired = problem{http.StatusBadRequest, "idempotency-key-required", "Idempotency-Key header is required", classFinal}
+	idempotencyKeyInvalid  = problem{http.StatusBadRequest, "idempotency-key-invalid", "Idempotency-Key header is invalid", classFinal}
 	idempotencyKeyReused   = problem{http.StatusConflict, "idempotency-key-reused", "Idempotency-Key was already used with a different request", classFinal}
 	invalidParameter       = problem{http.StatusBadRequest, "invalid-parameter", "Parameter is invalid", classFinal}
 )

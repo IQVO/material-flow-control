@@ -18,7 +18,7 @@ info:
 
     Base path: the Service `material-flow-control` on :8080 (in-cluster
     `http://material-flow-control.warehouse-systems.svc.cluster.local`), through Kong at
-    `/api/material-flow-control`. Every POST requires `Idempotency-Key` (1-128 chars); a replayed answer carries
+    `/api/material-flow-control`. Every POST requires `Idempotency-Key` (1-128 printable ASCII characters); a replayed answer carries
     `Idempotency-Replayed: true`. Bodies snake_case; errors RFC 9457 `application/problem+json` with a stable
     `code`. No authentication. Location vocabulary: the AS/RS is addressed by its logical `LocationCode`
     (`WH1-AUTO-ASRS-ASRS1-00-00-S`, plan 05a D14); a goods-to-person station by its station id (`ST1`) or its
@@ -32,7 +32,7 @@ info:
 
     **Replay classes** (every problem type declares one): FINAL — a function of the request alone, stored and
     replayed (`bad-request`, `invalid-parameter`, `transport-request-conflict`, `station-not-found`,
-    `unknown-location`, `idempotency-key-required`, `idempotency-key-reused`); OUTCOME — the four rejections
+    `unknown-location`, `idempotency-key-required`, `idempotency-key-invalid`, `idempotency-key-reused`); OUTCOME — the four rejections
     (`unknown-container`, `container-busy`, `destination-unreachable`, `subsystem-unavailable`): the rejection
     record and `TransportRejected` commit WITH
     the stored answer, and a replay creates nothing; RETRYABLE — the key is released, so a retry under the same key
@@ -102,7 +102,7 @@ paths:
           content: {application/json: {schema: {$ref: '#/components/schemas/TransportOrder'}}}
         '400':
           $ref: '#/components/responses/BadRequest'
-          description: '`bad-request` (malformed body), `invalid-parameter` (field rules, source = destination, the purpose rule), `idempotency-key-required`. Replay class FINAL.'
+          description: '`bad-request` (malformed body), `invalid-parameter` (field rules, source = destination, the purpose rule), `idempotency-key-required`, `idempotency-key-invalid`. Replay class FINAL.'
         '409':
           $ref: '#/components/responses/Conflict'
           description: '`transport-request-conflict` (the same `transport_request_id` with another request), `idempotency-key-reused`. Replay class FINAL.'
@@ -145,7 +145,7 @@ paths:
           description: The subsystem was asked to cancel the leg in flight.
           headers: {Idempotency-Replayed: {$ref: '#/components/headers/IdempotencyReplayed'}}
           content: {application/json: {schema: {$ref: '#/components/schemas/TransportOrder'}}}
-        '400': {$ref: '#/components/responses/BadRequest', description: '`invalid-parameter`, `idempotency-key-required`. Replay class FINAL.'}
+        '400': {$ref: '#/components/responses/BadRequest', description: '`invalid-parameter`, `idempotency-key-required`, `idempotency-key-invalid`. Replay class FINAL.'}
         '404': {$ref: '#/components/responses/NotFound', description: '`transport-request-not-found`. Replay class RETRYABLE (the key is released: the request may be created after this answer).'}
         '409':
           $ref: '#/components/responses/Conflict'
@@ -181,7 +181,7 @@ paths:
           description: Resolved.
           headers: {Idempotency-Replayed: {$ref: '#/components/headers/IdempotencyReplayed'}}
           content: {application/json: {schema: {$ref: '#/components/schemas/ContainerTrack'}}}
-        '400': {$ref: '#/components/responses/BadRequest', description: '`bad-request`, `invalid-parameter`, `idempotency-key-required`. Replay class FINAL.'}
+        '400': {$ref: '#/components/responses/BadRequest', description: '`bad-request`, `invalid-parameter`, `idempotency-key-required`, `idempotency-key-invalid`. Replay class FINAL.'}
         '404': {$ref: '#/components/responses/NotFound', description: '`container-track-not-found`. Replay class RETRYABLE (the key is released: the track may be created after this answer).'}
         '409':
           $ref: '#/components/responses/Conflict'
@@ -222,15 +222,15 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      description: Caller-minted key, 1 to 128 characters (fleet guideline R3-R5); a missing or longer one is `400 idempotency-key-required`.
-      schema: {type: string, minLength: 1, maxLength: 128}
+      description: Caller-minted key, 1 to 128 printable ASCII characters (fleet guideline R3-R5); a missing one is `400 idempotency-key-required`, any other outside the rule `400 idempotency-key-invalid`.
+      schema: {type: string, minLength: 1, maxLength: 128, pattern: '^[\x21-\x7E]+$'}
   headers:
     IdempotencyReplayed:
       description: '`true` on an answer replayed from the idempotency store; absent on a first execution.'
       schema: {type: string, enum: ['true']}
   responses:
     BadRequest:
-      description: '`bad-request`, `invalid-parameter`, `idempotency-key-required`. Replay class FINAL.'
+      description: '`bad-request`, `invalid-parameter`, `idempotency-key-required`, `idempotency-key-invalid`. Replay class FINAL.'
       content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
     NotFound:
       description: '`transport-request-not-found`, `container-track-not-found` — Replay class RETRYABLE on the keyed routes (the id can be created later); `station-not-found` — read route only.'

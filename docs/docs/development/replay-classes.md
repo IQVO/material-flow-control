@@ -25,7 +25,8 @@ and every problem type declares one replay class in `internal/adapters/inbound/h
 | --- | --- | --- | --- |
 | `bad-request` | 400 | FINAL | a body that is not valid JSON for the operation (or above 64 KiB) |
 | `invalid-parameter` | 400 | FINAL | a field rule, source = destination, a purpose rule (decision D4), a bad path id |
-| `idempotency-key-required` | 400 | FINAL | a POST without `Idempotency-Key`, or a key longer than 128 characters |
+| `idempotency-key-required` | 400 | FINAL | a POST without `Idempotency-Key` |
+| `idempotency-key-invalid` | 400 | FINAL | a key that is not 1 to 128 printable ASCII characters (0x21-0x7E) |
 | `idempotency-key-reused` | 409 | FINAL | the key was stored for another method, path or body |
 | `transport-request-conflict` | 409 | FINAL | the `transport_request_id` was used with another request |
 | `unknown-location` | 422 | FINAL | a clarification resolution naming a place outside the layout |

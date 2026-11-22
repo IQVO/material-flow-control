@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
-	"unicode/utf8"
 
 	"github.com/IQVO/material-flow-control/internal/application/idempotency"
 	"github.com/IQVO/material-flow-control/internal/application/ports"
@@ -55,8 +54,12 @@ func (m *Idempotency) notBefore() time.Time { return m.Clock.Now().UTC().Add(-Id
 func (m *Idempotency) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get(IdempotencyKeyHeader)
-		if key == "" || utf8.RuneCountInString(key) > maxIDLen {
-			writeProblem(w, r, idempotencyKeyRequired, "send an Idempotency-Key header of 1 to 128 characters, unique per logical request")
+		if key == "" {
+			writeProblem(w, r, idempotencyKeyRequired, "send an Idempotency-Key header of 1 to 128 printable ASCII characters, unique per logical request")
+			return
+		}
+		if !validKey(key) {
+			writeProblem(w, r, idempotencyKeyInvalid, "the Idempotency-Key must be 1 to 128 printable ASCII characters")
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
@@ -251,4 +254,17 @@ func flush(w http.ResponseWriter, out *capture) {
 	}
 	w.WriteHeader(out.code)
 	_, _ = w.Write(out.body.Bytes())
+}
+
+// validKey is the fleet key rule: 1 to 128 printable ASCII characters (0x21-0x7E, no space). carry (Task 18 review)
+func validKey(key string) bool {
+	if len(key) > maxIDLen {
+		return false
+	}
+	for i := range len(key) {
+		if key[i] < '!' || key[i] > '~' {
+			return false
+		}
+	}
+	return true
 }

@@ -18,7 +18,7 @@ type ProblemEntry struct {
 // allProblems lists every problem type once (two errors share invalid-parameter), the four OUTCOME
 // rejections included (writeRejection answers them outside problemCatalogue).
 func allProblems() []problem {
-	out := []problem{idempotencyKeyRequired, idempotencyKeyReused, internalProblem, dependencyUnavailable}
+	out := []problem{idempotencyKeyRequired, idempotencyKeyInvalid, idempotencyKeyReused, internalProblem, dependencyUnavailable}
 	for _, r := range []transportrequest.Reason{transportrequest.ReasonUnknownContainer, transportrequest.ReasonContainerBusy,
 		transportrequest.ReasonDestinationUnreachable, transportrequest.ReasonSubsystemUnavailable} {
 		out = append(out, rejectionProblem(r))
