@@ -1,7 +1,9 @@
 package http_test
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -9,6 +11,9 @@ import (
 
 	mfchttp "github.com/IQVO/material-flow-control/internal/adapters/inbound/http"
 )
+
+// catchUpDetail is the POST 503 detail while catching up (carry (Task 26 review): no raw gate error in it).
+const catchUpDetail = "not ready to decide: the subsystem facts published before boot are still being applied; retry later"
 
 // ruling P4-R20: while the subsystem consumers have not caught up with the backlog sampled at boot, no POST is
 // decided: each answers 503 dependency-unavailable (RETRYABLE, nothing recorded, no event), reads still answer, and
@@ -21,6 +26,10 @@ func TestNoPostIsDecidedBeforeTheSubsystemFactsAreCaughtUp(t *testing.T) {
 		}
 		return errors.New("catching up with the subsystem facts published before boot: warehouse.asrs-control.events (3 facts behind)")
 	}
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
 	a := newAPI(t, func(s *mfchttp.Server) { s.CaughtUp = gate })
 	a.stored("TOTE-1")
 	for _, c := range []struct {
@@ -29,10 +38,14 @@ func TestNoPostIsDecidedBeforeTheSubsystemFactsAreCaughtUp(t *testing.T) {
 	}{{"/transport-requests", pick("task-1.1", "TOTE-1")}, {"/transport-requests/task-1.1/cancellation", nil},
 		{"/container-tracks/TOTE-1/clarification-resolution", nil}} {
 		rec, body := a.do(http.MethodPost, c.path, "k-1", c.body)
-		if rec.Code != http.StatusServiceUnavailable || body["code"] != "dependency-unavailable" ||
-			!strings.Contains(body["detail"].(string), "(3 facts behind)") {
-			t.Fatalf("POST %s while catching up = %d %v, want 503 dependency-unavailable naming the lag", c.path, rec.Code, body)
+		// carry (Task 26 review): the detail is generic (no topic, lag or broker error reaches the caller); the gate's
+		// own error goes to the log.
+		if rec.Code != http.StatusServiceUnavailable || body["code"] != "dependency-unavailable" || body["detail"] != catchUpDetail {
+			t.Fatalf("POST %s while catching up = %d %v, want 503 dependency-unavailable %q", c.path, rec.Code, body, catchUpDetail)
 		}
+	}
+	if !strings.Contains(logged.String(), "(3 facts behind)") {
+		t.Fatalf("the gate's error is not logged; log:\n%s", logged.String())
 	}
 	if n := len(a.events.All()); n != 0 {
 		t.Fatalf("%d events while catching up, want none", n)

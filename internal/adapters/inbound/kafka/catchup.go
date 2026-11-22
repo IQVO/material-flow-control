@@ -74,26 +74,39 @@ func (g *CatchUp) Run(ctx context.Context) {
 	}
 }
 
-// step is one check; it reports whether the gate is open.
+// step is one check; it reports whether the gate is open. carry (Task 26 review): the broker calls run OUTSIDE g.mu
+// and only their result is published under it, so Err never waits on the network. Only Run calls step (one goroutine).
 func (g *CatchUp) step(ctx context.Context) bool {
 	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.ends != nil && g.status == nil {
+	ends, open := g.ends, g.ends != nil && g.status == nil
+	g.mu.Unlock()
+	if open {
 		return true
 	}
-	if g.ends == nil {
-		ends, err := g.sample(ctx)
+	if ends == nil {
+		sampled, err := g.sample(ctx)
 		if err != nil {
-			g.status = fmt.Errorf("%w: %w", errNotSampled, err)
+			g.publish(nil, fmt.Errorf("%w: %w", errNotSampled, err))
 			return false
 		}
-		g.ends = ends
+		ends = sampled
 	}
-	g.status = g.behind(ctx)
-	if g.status == nil {
+	status := g.behind(ctx, ends)
+	g.publish(ends, status)
+	if status == nil {
 		g.log.InfoContext(ctx, "caught up with the subsystem facts published before boot (ruling P4-R20)")
 	}
-	return g.status == nil
+	return status == nil
+}
+
+// publish records one step's outcome; ends, once sampled, is never written again.
+func (g *CatchUp) publish(ends map[string]map[int]partitionEnd, status error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if ends != nil {
+		g.ends = ends
+	}
+	g.status = status
 }
 
 func (g *CatchUp) sample(ctx context.Context) (map[string]map[int]partitionEnd, error) {
@@ -109,10 +122,10 @@ func (g *CatchUp) sample(ctx context.Context) (map[string]map[int]partitionEnd, 
 }
 
 // behind names every topic whose group has not yet committed the sampled end on each of its partitions.
-func (g *CatchUp) behind(ctx context.Context) error {
+func (g *CatchUp) behind(ctx context.Context, ends map[string]map[int]partitionEnd) error {
 	var lagging []string
 	for _, s := range g.subs {
-		lag, err := g.lag(ctx, s)
+		lag, err := g.lag(ctx, s, ends[s.Topic])
 		if err != nil {
 			return fmt.Errorf("committed offsets of %s on %s: %w", s.Group, s.Topic, err)
 		}
@@ -127,9 +140,9 @@ func (g *CatchUp) behind(ctx context.Context) error {
 }
 
 // lag is how many records of the sampled ranges s.Group has still to commit; an empty partition has none.
-func (g *CatchUp) lag(ctx context.Context, s Subscription) (int64, error) {
+func (g *CatchUp) lag(ctx context.Context, s Subscription, ends map[int]partitionEnd) (int64, error) {
 	var parts []int
-	for p, e := range g.ends[s.Topic] {
+	for p, e := range ends {
 		if e.last > e.first {
 			parts = append(parts, p)
 		}
@@ -144,7 +157,7 @@ func (g *CatchUp) lag(ctx context.Context, s Subscription) (int64, error) {
 	}
 	var lag int64
 	for _, p := range parts {
-		e := g.ends[s.Topic][p]
+		e := ends[p]
 		lag += max(e.last-max(committed[p], e.first), 0)
 	}
 	return lag, nil

@@ -61,6 +61,9 @@ func NewRouter(s *Server, logger *slog.Logger) http.Handler {
 	return r
 }
 
+// catchUpDetail is the 503 detail of a POST refused by decideAfterCatchUp.
+const catchUpDetail = "not ready to decide: the subsystem facts published before boot are still being applied; retry later"
+
 // decideAfterCatchUp answers every POST 503 dependency-unavailable (RETRYABLE) while the subsystem facts published
 // before boot are still being applied: a request decided on that state could be refused for good (decision D7). It
 // runs before the Idempotency middleware, so a refused attempt reserves and stores no key. ruling P4-R20
@@ -68,7 +71,10 @@ func (s *Server) decideAfterCatchUp(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.CaughtUp != nil {
 			if err := s.CaughtUp(); err != nil {
-				writeProblem(w, r, dependencyUnavailable, "not ready to decide: "+err.Error())
+				// carry (Task 26 review): the caller gets a generic detail; the gate's error (topics, lag, a broker
+				// address) goes to the log only.
+				slog.WarnContext(r.Context(), "not ready to decide", "error", logSafe(err.Error()), "path", logSafe(r.URL.Path))
+				writeProblem(w, r, dependencyUnavailable, catchUpDetail)
 				return
 			}
 		}
