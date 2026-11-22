@@ -18,10 +18,12 @@ type Retention struct {
 	batch int
 	// flowLock: the batch takes the flow lock first (decision D19), so it never interleaves with a unit of work.
 	flowLock bool
-	// sql deletes one batch: $1 is the cutoff, $2 the batch size, then extra.
-	sql   string
-	extra []any
+	// pass starts one Purge pass: it returns the pass's batch, which keeps the pass's state (a keyset cursor).
+	pass func() batchFunc
 }
+
+// batchFunc deletes one batch inside q's transaction: rows it deleted, and more when another batch may find rows.
+type batchFunc func(ctx context.Context, q querier, before time.Time) (rows int64, more bool, err error)
 
 // Table is the table the policy purges, the `table` attribute of material_flow_control.retention.purged.
 func (r *Retention) Table() string { return r.table }
@@ -29,13 +31,14 @@ func (r *Retention) Table() string { return r.table }
 // Purge deletes every row of the policy older than before, batch after batch, and returns how many it deleted.
 func (r *Retention) Purge(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
+	next := r.pass()
 	for {
-		n, err := r.purgeBatch(ctx, before)
+		n, more, err := r.purgeBatch(ctx, next, before)
 		total += n
 		if err != nil {
 			return total, fmt.Errorf("purge %s: %w", r.table, err)
 		}
-		if n < int64(r.batch) {
+		if !more {
 			return total, nil
 		}
 		if err := ctx.Err(); err != nil {
@@ -44,26 +47,39 @@ func (r *Retention) Purge(ctx context.Context, before time.Time) (int64, error) 
 	}
 }
 
-func (r *Retention) purgeBatch(ctx context.Context, before time.Time) (int64, error) {
+func (r *Retention) purgeBatch(ctx context.Context, next batchFunc, before time.Time) (int64, bool, error) {
 	var n int64
+	var more bool
 	err := inTx(ctx, r.pool, func(q querier) error {
 		if r.flowLock {
 			if _, err := q.Exec(ctx, `SELECT id FROM flow_lock WHERE id = 1 FOR UPDATE`); err != nil {
 				return fmt.Errorf("take the flow lock: %w", err)
 			}
 		}
-		tag, err := q.Exec(ctx, r.sql, append([]any{before.UTC(), r.batch}, r.extra...)...)
-		n = tag.RowsAffected()
+		var err error
+		n, more, err = next(ctx, q, before.UTC())
 		return err
 	})
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	return n, nil
+	return n, more, nil
 }
 
-func newRetention(pool *pgxpool.Pool, table string, batch int, sql string, extra ...any) *Retention {
-	return &Retention{pool: pool, table: table, batch: max(batch, 1), sql: sql, extra: extra}
+func newRetention(pool *pgxpool.Pool, table string, batch int, pass func(batch int) batchFunc) *Retention {
+	batch = max(batch, 1)
+	return &Retention{pool: pool, table: table, batch: batch, pass: func() batchFunc { return pass(batch) }}
+}
+
+// statement is a pass whose batches run one DELETE ($1 the cutoff, $2 the batch size, then extra) until a batch
+// deletes fewer rows than the batch size.
+func statement(sql string, extra ...any) func(batch int) batchFunc {
+	return func(batch int) batchFunc {
+		return func(ctx context.Context, q querier, before time.Time) (int64, bool, error) {
+			tag, err := q.Exec(ctx, sql, append([]any{before, batch}, extra...)...)
+			return tag.RowsAffected(), tag.RowsAffected() >= int64(batch), err
+		}
+	}
 }
 
 // orderRetentionSQL selects ENDED orders last written before the cutoff that nothing live references: no PENDING
@@ -90,40 +106,63 @@ DELETE FROM transport_orders o USING victims v WHERE o.transport_order_id = v.tr
 // NewOrderRetention purges ended transport orders with their legs and their ACCEPTED request records, under the
 // flow lock: a RequestTransport replay or a late fact reads an order and then expects it to be there.
 func NewOrderRetention(pool *pgxpool.Pool, batch int) *Retention {
-	r := newRetention(pool, "transport_orders", batch, orderRetentionSQL)
+	r := newRetention(pool, "transport_orders", batch, statement(orderRetentionSQL))
 	r.flowLock = true
 	return r
 }
 
 // NewRejectedRequestRetention purges REJECTED request records (they have no order) recorded before the cutoff.
 func NewRejectedRequestRetention(pool *pgxpool.Pool, batch int) *Retention {
-	return newRetention(pool, "transport_requests", batch, `DELETE FROM transport_requests WHERE ctid = ANY(ARRAY(
-		SELECT ctid FROM transport_requests WHERE outcome = 'REJECTED' AND recorded_at < $1 LIMIT $2))`)
+	return newRetention(pool, "transport_requests", batch, statement(`DELETE FROM transport_requests WHERE ctid = ANY(ARRAY(
+		SELECT ctid FROM transport_requests WHERE outcome = 'REJECTED' AND recorded_at < $1 LIMIT $2))`))
 }
+
+// moveRetentionSQL scans the next batch of moves made before the cutoff ($1) in (moved_at, id) order after the cursor
+// ($3, $4) and deletes those its guards allow: never one of a container's keepLatest newest moves ($5 = keepLatest-1,
+// what a track view shows) and never a move of a container a live order is moving. It answers the rows deleted, the
+// rows scanned and the last scanned (moved_at, id), the next batch's cursor.
+// carry (retention review): a keyset cursor, so a pass reads every row once; rows the guards keep used to be re-read
+// by every batch of the pass.
+const moveRetentionSQL = `WITH scanned AS MATERIALIZED (
+	SELECT m.id, m.container_id, m.moved_at FROM container_moves m
+	WHERE m.moved_at < $1 AND (m.moved_at, m.id) > ($3::timestamptz, $4::bigint) ORDER BY m.moved_at, m.id LIMIT $2
+), gone AS (
+	DELETE FROM container_moves d USING scanned s WHERE d.id = s.id
+	AND s.id < (SELECT n.id FROM container_moves n WHERE n.container_id = s.container_id ORDER BY n.id DESC OFFSET $5 LIMIT 1)
+	AND NOT EXISTS (SELECT 1 FROM transport_orders o WHERE o.status = 'IN_PROGRESS' AND o.container_id = s.container_id)
+	RETURNING 1
+), last AS (SELECT moved_at, id FROM scanned ORDER BY moved_at DESC, id DESC LIMIT 1)
+SELECT (SELECT count(*) FROM gone), (SELECT count(*) FROM scanned),
+	COALESCE((SELECT moved_at FROM last), $3::timestamptz), COALESCE((SELECT id FROM last), $4::bigint)`
 
 // NewContainerMoveRetention purges moves made before the cutoff, but never one of a container's keepLatest newest
 // moves (what a track view shows: HistoryLimit) and never a move of a container a live order is moving. A
-// keepLatest below 1 keeps 1.
+// keepLatest below 1 keeps 1. One pass reads every move older than the cutoff once (a keyset cursor).
 func NewContainerMoveRetention(pool *pgxpool.Pool, batch, keepLatest int) *Retention {
-	return newRetention(pool, "container_moves", batch, `DELETE FROM container_moves WHERE ctid = ANY(ARRAY(
-		SELECT m.ctid FROM container_moves m WHERE m.moved_at < $1
-		AND m.id < (SELECT n.id FROM container_moves n WHERE n.container_id = m.container_id ORDER BY n.id DESC OFFSET $3 LIMIT 1)
-		AND NOT EXISTS (SELECT 1 FROM transport_orders o WHERE o.status = 'IN_PROGRESS' AND o.container_id = m.container_id)
-		LIMIT $2))`, int64(max(keepLatest, 1)-1))
+	skip := int64(max(keepLatest, 1) - 1)
+	return newRetention(pool, "container_moves", batch, func(batch int) batchFunc {
+		var at time.Time // the zero instant precedes every move
+		var id int64
+		return func(ctx context.Context, q querier, before time.Time) (int64, bool, error) {
+			var deleted, scanned int64
+			err := q.QueryRow(ctx, moveRetentionSQL, before, batch, at, id, skip).Scan(&deleted, &scanned, &at, &id)
+			return deleted, scanned >= int64(batch), err
+		}
+	})
 }
 
 // NewCommandRetention purges DONE and FAILED subsystem commands created before the cutoff whose order is not live
 // (a PENDING command is the dispatcher's work and is never purged).
 func NewCommandRetention(pool *pgxpool.Pool, batch int) *Retention {
-	return newRetention(pool, "subsystem_commands", batch, `DELETE FROM subsystem_commands WHERE ctid = ANY(ARRAY(
+	return newRetention(pool, "subsystem_commands", batch, statement(`DELETE FROM subsystem_commands WHERE ctid = ANY(ARRAY(
 		SELECT c.ctid FROM subsystem_commands c WHERE c.status IN ('DONE', 'FAILED') AND c.created_at < $1
 		AND NOT EXISTS (SELECT 1 FROM transport_orders o WHERE o.transport_order_id = c.transport_order_id AND o.status = 'IN_PROGRESS')
-		LIMIT $2))`)
+		LIMIT $2))`))
 }
 
 // NewOutboxRetention purges outbox rows PUBLISHED before the cutoff. An unpublished row (attempt-capped ones
 // included: the runbook re-arms them) is never purged.
 func NewOutboxRetention(pool *pgxpool.Pool, batch int) *Retention {
-	return newRetention(pool, "outbox_events", batch, `DELETE FROM outbox_events WHERE ctid = ANY(ARRAY(
-		SELECT ctid FROM outbox_events WHERE published_at IS NOT NULL AND published_at < $1 LIMIT $2))`)
+	return newRetention(pool, "outbox_events", batch, statement(`DELETE FROM outbox_events WHERE ctid = ANY(ARRAY(
+		SELECT ctid FROM outbox_events WHERE published_at IS NOT NULL AND published_at < $1 LIMIT $2))`))
 }
