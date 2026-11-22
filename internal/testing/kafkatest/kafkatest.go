@@ -104,18 +104,65 @@ func CreateTopic(t *testing.T, topic string) {
 	t.Fatalf("topic %s never got a leader", topic)
 }
 
+// Produce writes one record per key (the key is also the value) to topic and waits for every replica's ack.
+func Produce(t *testing.T, topic string, keys ...string) {
+	t.Helper()
+	w := &kafkago.Writer{Addr: kafkago.TCP(Brokers(t)...), Topic: topic, RequiredAcks: kafkago.RequireAll,
+		WriteTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, BatchTimeout: time.Millisecond}
+	defer func() { _ = w.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for _, k := range keys {
+		if err := w.WriteMessages(ctx, kafkago.Message{Key: []byte(k), Value: []byte(k)}); err != nil {
+			t.Fatalf("produce %s to %s: %v", k, topic, err)
+		}
+	}
+}
+
 // Message is one record read back.
 type Message struct {
 	Key     string
 	Value   []byte
 	Headers map[string]string
+	Offset  int64
+}
+
+// EndOffset is the offset the NEXT record of topic partition 0 gets: a mark taken before a stimulus, so a read from it
+// (ReadFrom) can never be satisfied by an older record.
+// ruling P4-R19
+func EndOffset(t *testing.T, topic string) int64 {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := kafkago.DialLeader(ctx, "tcp", Brokers(t)[0], topic, 0)
+	if err != nil {
+		t.Fatalf("dial the leader of %s/0: %v", topic, err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	end, err := conn.ReadLastOffset()
+	if err != nil {
+		t.Fatalf("read the end offset of %s/0: %v", topic, err)
+	}
+	return end
 }
 
 // ReadAll reads topic partition 0 from the start until until(read) is true or timeout passes.
 func ReadAll(t *testing.T, topic string, until func([]Message) bool, timeout time.Duration) []Message {
 	t.Helper()
+	return ReadFrom(t, topic, kafkago.FirstOffset, until, timeout)
+}
+
+// ReadFrom reads topic partition 0 from offset from (an EndOffset mark, or kafka-go's FirstOffset) until until(read)
+// is true or timeout passes.
+// ruling P4-R19
+func ReadFrom(t *testing.T, topic string, from int64, until func([]Message) bool, timeout time.Duration) []Message {
+	t.Helper()
 	r := kafkago.NewReader(kafkago.ReaderConfig{Brokers: Brokers(t), Topic: topic, Partition: 0, MinBytes: 1, MaxBytes: 1 << 20})
 	defer func() { _ = r.Close() }()
+	if err := r.SetOffset(from); err != nil {
+		t.Fatalf("seek %s/0 to %d: %v", topic, from, err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	var out []Message
@@ -129,7 +176,7 @@ func ReadAll(t *testing.T, topic string, until func([]Message) bool, timeout tim
 			for i, m := range out {
 				keys[i] = m.Key
 			}
-			t.Fatalf("read %s: %d messages before the timeout, the condition never held; keys read: %v", topic, len(out), keys)
+			t.Fatalf("read %s from offset %d: %d messages before the timeout, the condition never held; keys read: %v", topic, from, len(out), keys)
 		}
 		if err != nil {
 			time.Sleep(200 * time.Millisecond)
@@ -139,7 +186,7 @@ func ReadAll(t *testing.T, topic string, until func([]Message) bool, timeout tim
 		for _, x := range m.Headers {
 			h[x.Key] = string(x.Value)
 		}
-		out = append(out, Message{Key: string(m.Key), Value: m.Value, Headers: h})
+		out = append(out, Message{Key: string(m.Key), Value: m.Value, Headers: h, Offset: m.Offset})
 	}
 	return out
 }

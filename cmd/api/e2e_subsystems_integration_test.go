@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	kafkago "github.com/segmentio/kafka-go"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"gopkg.in/yaml.v3"
@@ -51,6 +52,9 @@ type floor struct {
 	mfc, emu, amrAPI string
 	n                int
 	nonce            string
+	// start is the end offset of the MFC topic before this run's floor booted (ruling P4-R19): a positional read never
+	// sees an earlier -count run's facts.
+	start int64
 }
 
 // id makes a container or request id unique to this run: with -count=N the binary's one broker still holds the
@@ -183,6 +187,7 @@ func startFloor(t *testing.T) *floor {
 		"warehouse.asrs-control.events.dlq", "warehouse.amr-fleet-control.events.dlq"} {
 		kafkatest.CreateTopic(t, topic)
 	}
+	f.start = kafkatest.EndOffset(t, mfcTopic) // ruling P4-R19
 	f.startEmulator()
 	asrsURL, amrURL := f.startSubsystems()
 	f.amrAPI = amrURL
@@ -288,16 +293,28 @@ func (f *floor) track(container string, timeout time.Duration, ok func(position 
 // facts reads warehouse.material-flow-control.events until holds (kafkatest dumps the keys read on a timeout).
 func facts(t *testing.T, until func([]map[string]any) bool, timeout time.Duration) []map[string]any {
 	t.Helper()
+	return factsFrom(t, kafkago.FirstOffset, until, timeout)
+}
+
+// factsFrom reads warehouse.material-flow-control.events from offset from (a mark) until holds.
+// ruling P4-R19
+func factsFrom(t *testing.T, from int64, until func([]map[string]any) bool, timeout time.Duration) []map[string]any {
+	t.Helper()
 	var out []map[string]any
-	kafkatest.ReadAll(t, mfcTopic, func(ms []kafkatest.Message) bool {
-		out = out[:0]
-		for _, m := range ms {
-			var ev map[string]any
-			_ = json.Unmarshal(m.Value, &ev)
-			out = append(out, ev)
-		}
+	kafkatest.ReadFrom(t, mfcTopic, from, func(ms []kafkatest.Message) bool {
+		out = decode(ms)
 		return until(out)
 	}, timeout)
+	return out
+}
+
+func decode(ms []kafkatest.Message) []map[string]any {
+	out := make([]map[string]any, 0, len(ms))
+	for _, m := range ms {
+		var ev map[string]any
+		_ = json.Unmarshal(m.Value, &ev)
+		out = append(out, ev)
+	}
 	return out
 }
 
@@ -448,32 +465,57 @@ func (f *floor) clarification() {
 
 // capacityLoop: R2, one of three robots, drops off the network; within 60 s the fleet's capacity is DEGRADED, one unit
 // lower than before.
+// ruling P4-R19 (Task 25 review, CRITICAL): the loop is POSITIONAL. "before" is the last AMR_FLEET/AMR1 capacity fact
+// before a mark (this run's facts only, from f.start), which must be the idle fleet, AVAILABLE 3 of 3 (else retake the
+// mark); the DEGRADED fact must come AFTER that mark, which is taken before the disconnect. A re-read from offset 0
+// used to stop at the boot ramp's DEGRADED 2 of 3 and passed with the disconnect removed.
 func (f *floor) capacityLoop() {
 	f.t.Helper()
-	// deviation (Task 25): the brief took the FIRST capacity fact as "before" (the boot-time UNAVAILABLE 0 of 0, so no
-	// later fact was ever lower); "before" is the idle fleet once the clarification move is done: all units available.
-	before := lastFleet(facts(f.t, func(evs []map[string]any) bool {
-		d := lastFleet(evs)
-		return d["status"] == "AVAILABLE" && d["units_total"] == 3.0 && d["units_available"] == 3.0
-	}, 60*time.Second))
-	f.fault("ROBOT_DISCONNECT", "R2", "", true)
-	var seen []map[string]any
+	var mark int64
+	var before map[string]any
+	var window, seen []map[string]any
 	f.t.Cleanup(func() {
 		if f.t.Failed() {
 			_, fleet := f.call(http.MethodGet, f.amrAPI+"/fleets/AMR1", nil, "")
-			fmt.Fprintf(os.Stderr, "capacity loop: before %v; AMR_FLEET/AMR1 capacity facts %v; amr-fleet-control GET /fleets/AMR1 %v\n", before, seen, fleet)
+			fmt.Fprintf(os.Stderr, "capacity loop: mark %d; before %v; capacity facts before the mark %v; after it %v; amr-fleet-control GET /fleets/AMR1 %v\n",
+				mark, before, fleetFacts(window), seen, fleet)
 		}
 	})
-	facts(f.t, func(evs []map[string]any) bool {
-		seen = seen[:0]
-		for _, ev := range named(evs, "AMR_FLEET/AMR1", "SubsystemCapacityChanged") {
-			seen = append(seen, data(ev))
+	f.eventually("the idle fleet (AVAILABLE 3 of 3) as the last capacity fact before the mark", 60*time.Second, func() bool {
+		mark = kafkatest.EndOffset(f.t, mfcTopic)
+		window = f.window(f.start, mark)
+		before = lastFleet(window)
+		return before["status"] == "AVAILABLE" && before["units_total"] == 3.0 && before["units_available"] == 3.0
+	}, func() any { return fleetFacts(window) })
+	f.fault("ROBOT_DISCONNECT", "R2", "", true)
+	factsFrom(f.t, mark, func(evs []map[string]any) bool {
+		seen = fleetFacts(evs)
+		for _, d := range seen {
+			if d["status"] == "DEGRADED" && d["units_total"] == 3.0 && d["units_available"] == 2.0 {
+				return true
+			}
 		}
-		d := lastFleet(evs)
-		got, _ := d["units_available"].(float64)
-		want, _ := before["units_available"].(float64)
-		return d["status"] == "DEGRADED" && got == want-1
+		return false
 	}, 60*time.Second)
+}
+
+// window reads this topic's facts at offsets [from, to): the facts before a mark.
+func (f *floor) window(from, to int64) []map[string]any {
+	f.t.Helper()
+	if to <= from {
+		return nil
+	}
+	return decode(kafkatest.ReadFrom(f.t, mfcTopic, from, func(ms []kafkatest.Message) bool {
+		return len(ms) > 0 && ms[len(ms)-1].Offset >= to-1
+	}, 30*time.Second))
+}
+
+func fleetFacts(evs []map[string]any) []map[string]any {
+	var out []map[string]any
+	for _, ev := range named(evs, "AMR_FLEET/AMR1", "SubsystemCapacityChanged") {
+		out = append(out, data(ev))
+	}
+	return out
 }
 
 func lastFleet(evs []map[string]any) map[string]any {
