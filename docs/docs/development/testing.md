@@ -104,6 +104,22 @@ above the test), more than `go test`'s 10-minute default; a run on the emulator 
 
 Raising a pin is a deliberate change (a new commit in `ci.yml` and here, the test rerun), never `develop`.
 
+## The boot catch-up gate (ruling P4-R20)
+
+| Test | Proves |
+| --- | --- |
+| `cmd/api/catchup_integration_test.go` `TestNoRequestIsDecidedAndReadyzIsNotReadyBeforeTheBacklogIsReplayed` | with 400 AS/RS facts on the topic before boot, the first POST is `503`, `/readyz` is `503`, ready only once both groups committed the end offsets sampled at boot, and the same key and body is then accepted |
+| `cmd/api/catchup_integration_test.go` `TestNoRequestIsDecidedBeforeTheAmrBacklogIsReplayed` | the same with the long backlog (1000 facts) on the AMR topic: a gate blind to the AMR subscription fails it |
+| `cmd/api/catchup_wiring_integration_test.go` `TestWireGatesThePostsAndTheTickOnTheCatchUp` | `wire()` hands the gate to the POST routes and to the tick: `app.caughtUp` is set and errs before the catch-up, a POST is `503`, the tick loop runs no tick |
+| `cmd/api/tick_gate_test.go` | the tick runs nothing while the gate is closed and ticks once it opens |
+| `internal/adapters/inbound/kafka/catchup_test.go` | every partition must commit its sampled end; sampled once; empty partitions and unknown topics open at once; a broker that does not answer keeps it closed; once open it stays open |
+| `internal/adapters/inbound/kafka/catchup_lock_test.go` | `Err()` answers at once while a sampling or offset-fetch call hangs on the broker |
+| `internal/adapters/inbound/kafka/catchup_integration_test.go` | the end and committed offsets the gate compares, on a real broker |
+| `internal/adapters/inbound/http/catchup_gate_test.go` | every POST is `503 dependency-unavailable` with the generic detail (the gate's error only in the log), nothing recorded, reads not gated, the same key decided after |
+
+`internal/adapters/inbound/http/resolve_trailing_test.go` pins that every POST body is ONE JSON value: a second value
+or a stray `}` / `]` after it is `400 bad-request`.
+
 ## Consumer contract tests
 
 `contracts/pinned.json` lists the four producer files this repo pins (asrs-control and amr-fleet-control, AsyncAPI

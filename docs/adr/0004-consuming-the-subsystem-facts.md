@@ -23,7 +23,17 @@ A leg starts only after the previous handoff was confirmed by the subsystem that
 5. The consumed contracts are pinned byte copies of the producers' `develop` (`contracts/`), and every pinned
    example of a consumed type decodes through the production handler.
 
+6. Added (ruling P4-R20): the boot catch-up gate. The end offsets of both topics are sampled once at boot; until
+   each group has committed them on every partition, no POST is decided (`503 dependency-unavailable`, RETRYABLE,
+   generic detail), `/readyz` names `subsystem-facts` and the leg-timeout tick does not run. Facts published after
+   boot never keep it closed; once open it stays open; its broker calls run outside its lock.
+
 ## Consequences
 
 - A new deployment learns every stored container from the topic's retention (ADR 0001's known limit).
 - A producer change to a consumed field fails `pinned-contracts` before it reaches this consumer.
+- (ruling P4-R20) A restart decides nothing on state the consumers have not replayed yet: a request is never rejected
+  `UNKNOWN_CONTAINER` or `SUBSYSTEM_UNAVAILABLE` for good because a backlog was still being applied, and no leg is failed
+  `TIMEOUT` because its progress facts sit in that backlog. The price is a not-ready window at boot as long as the
+  replay of the backlog (seconds for hundreds of facts; a consumer that cannot advance keeps the pod out of the Service,
+  which its logs and DLQ then explain).

@@ -37,7 +37,7 @@ A command queued during the drain stays `PENDING` in `subsystem_commands` and is
 | Probe | Answers |
 | --- | --- |
 | `GET /healthz` | `200 {"status":"ok"}` while the process runs. Liveness. |
-| `GET /readyz` | `200 {"status":"ready"}`; `503 {"status":"not_ready"}` while draining; `503` problem `dependency-unavailable` naming `postgres` and/or `kafka` when a check fails (checks cached 2 s, 1 s timeout each). Readiness.; `503` problem `dependency-unavailable` naming `subsystem-facts` from boot until both consumers caught up with the backlog sampled at boot (ruling P4-R20: no POST is decided and the leg-timeout tick does not run meanwhile) |
+| `GET /readyz` | Readiness. `200 {"status":"ready"}`; `503 {"status":"not_ready"}` while draining; `503` problem `dependency-unavailable` naming each failing check: `postgres` (ping), `kafka` (broker dial), `subsystem-facts` from boot until both consumers caught up with the backlog sampled at boot (ruling P4-R20: no POST is decided and the leg-timeout tick does not run meanwhile). The checks run in turn under ONE 1 s deadline and the result is cached 2 s; `subsystem-facts` reads the catch-up gate's last result (no broker call, answers at once), so a slow broker never delays it. |
 
 `cmd/mcp` and `cmd/a2a` serve `GET /healthz` only.
 
