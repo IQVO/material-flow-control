@@ -2,7 +2,7 @@
 id: runbook
 title: "Runbook"
 sidebar_label: "Runbook"
-description: "Boot and shutdown order, the probes, dead-letter topics and their replay, stuck subsystem commands, clarification and leg timeouts."
+description: "Boot and shutdown order, the probes, dead-letter topics and their replay, stuck subsystem commands, clarification, leg timeouts and table retention."
 ---
 
 # Runbook
@@ -105,3 +105,31 @@ means it was already resolved; `422 unknown-location` names a place outside the 
 moves the container's track (the track follows physical facts) but never reopens the order. A leg that timed out
 with the container on a robot holds the container `CONTAINER_ON_FAILED_ROBOT` (ruling P4-R9). Check the subsystem
 first: its consumer lag and its own logs for the leg reference `<orderId>.<seq>.<attempt>`.
+
+## Table retention
+
+The hourly purge of `cmd/api` keeps the operational tables bounded
+([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)). It deletes only terminal rows older than their
+window, in batches of `PURGE_BATCH` rows (one transaction each, repeated until the table is done):
+
+| Table | Purged | Window |
+| --- | --- | --- |
+| `transport_orders` (+ `transport_legs`, the order's `transport_requests` row) | `COMPLETED`/`FAILED` orders no pending command, container track or station queue still references | `ORDER_RETENTION_HOURS` (720) |
+| `transport_requests` | REJECTED records | `ORDER_RETENTION_HOURS` |
+| `container_moves` | moves beyond each container's latest 20, unless a live order moves the container | `CONTAINER_MOVE_RETENTION_HOURS` (720) |
+| `subsystem_commands` | `DONE`/`FAILED` commands of ended orders | `COMMAND_RETENTION_HOURS` (720) |
+| `outbox_events` | published rows | `OUTBOX_RETENTION_HOURS` (168) |
+| `idempotency_keys`, `processed_events` | every row | 24 hours, 30 days (fixed) |
+
+`material_flow_control.retention.purged{table}` counts the deleted rows; `purge failed` (WARN, `table`) names a pass
+that failed (the next hour retries it). After the window a transport is gone: `GET /transport-requests/{id}` answers
+`404 transport-request-not-found`. To find what the next pass will delete:
+
+```sql
+SELECT count(*) FROM transport_orders WHERE status IN ('COMPLETED', 'FAILED') AND updated_at < now() - interval '720 hours';
+SELECT count(*) FROM outbox_events WHERE published_at < now() - interval '168 hours';
+```
+
+An attempt-capped outbox row is never purged: re-arm it (`UPDATE outbox_events SET attempts = 0 WHERE id = ...`) once
+the cause is fixed. An order a station still holds as occupant, or a container still in clarification, keeps its
+order until the hold or the slot is released.

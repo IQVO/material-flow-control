@@ -93,17 +93,17 @@ flowchart LR
 | Table | Holds |
 | --- | --- |
 | `flow_lock` | the one row every write unit of work locks first |
-| `transport_requests` | the ONE outcome of every `transport_request_id` (ACCEPTED or REJECTED) |
-| `transport_orders` | the `TransportOrder` snapshot (JSONB) per order, in acceptance order (`seq`) |
+| `transport_requests` | the ONE outcome of every `transport_request_id` (ACCEPTED or REJECTED; purged with its order, a REJECTED one after `ORDER_RETENTION_HOURS`) |
+| `transport_orders` | the `TransportOrder` snapshot (JSONB) per order, in acceptance order (`seq`); an ended order is purged after `ORDER_RETENTION_HOURS` (30 days) |
 | `transport_legs` | leg reference to order, the key every subsystem fact is matched by |
 | `container_tracks` | the `ContainerTrack` snapshot per container (position, active order, clarification) |
-| `container_moves` | each container's move history (the last 20 are served) |
+| `container_moves` | each container's move history (the last 20 are served and always kept; older moves are purged after `CONTAINER_MOVE_RETENTION_HOURS`) |
 | `station_queues` | the `StationQueue` snapshot per station |
 | `subsystem_capacities` | the latest capacity snapshot per subsystem and station |
 | `equipment_units` | the last `EquipmentStateChanged` per AS/RS unit (read by the agents) |
-| `subsystem_commands` | the command outbox (`status`, `attempts`, `next_attempt_at`, `deadline`, `last_error`) |
+| `subsystem_commands` | the command outbox (`status`, `attempts`, `next_attempt_at`, `deadline`, `last_error`; `DONE`/`FAILED` rows purged after `COMMAND_RETENTION_HOURS`) |
 | `processed_events` | the consumers' inbox, keyed by the CloudEvents id (purged after 30 days) |
-| `outbox_events` | the transactional outbox of published events |
+| `outbox_events` | the transactional outbox of published events (published rows purged after `OUTBOX_RETENTION_HOURS`, 7 days) |
 | `idempotency_keys` | stored POST answers (2xx, FINAL and OUTCOME 4xx; purged after 24 hours) |
 
 Aggregates are stored as the JSON of their domain `Snapshot`; migrations are embedded (`migrations/`) and run at boot

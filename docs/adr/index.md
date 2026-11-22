@@ -15,3 +15,4 @@ slug: /
 | [0005](0005-the-relationship-1-rest-interface-and-replay-classes.md) | The relationship-1 REST interface and its replay classes | Accepted |
 | [0006](0006-subsystem-capacity-measurement-and-publication.md) | Subsystem capacity — what is measured, how each subsystem maps, and when it is published | Accepted |
 | [0007](0007-observability-and-the-read-only-agentic-surfaces.md) | Observability and the read-only agentic surfaces | Accepted |
+| [0008](0008-retention-of-the-operational-tables.md) | Retention of the operational tables | Accepted |

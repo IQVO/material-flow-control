@@ -58,6 +58,13 @@ config:
   legTimeoutSeconds: 900
   dispatchPollMs: 200
   tickIntervalMs: 1000
+  # Table retention (ADR 0008): hours each kind of terminal row is kept, and the rows one purge batch deletes.
+  # orderRetentionHours may not be under 24 (the idempotency window).
+  orderRetentionHours: 720
+  containerMoveRetentionHours: 720
+  commandRetentionHours: 720
+  outboxRetentionHours: 168
+  purgeBatch: 1000
 # The material-flow layout (ADR 0002). Empty = the chart's files/flow-layout.yaml (a copy of
 # config/flow-layout.example.yaml, kept equal by the render test). carry (ruling P4-R4): that file holds EXAMPLE
 # place codes; a deployed layout uses the site's real facility-layout location codes.
