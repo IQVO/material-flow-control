@@ -218,16 +218,20 @@ func (o *Order) Next(at time.Time) (Leg, Action) {
 // DONE leg before it, -1 for none), or -1 with ActionNone (a leg runs or blocks) or ActionComplete.
 func (o *Order) scan() (int, int, Action) {
 	prev := -1
+	// An if-chain, not a tagless switch: cover does not instrument case expressions, so their mutants read NOT
+	// COVERED (Task 26 mutation work; the branches are the switch's, unchanged).
 	for i, l := range o.s.Legs {
-		switch {
-		case l.Status == LegDone:
+		if l.Status == LegDone {
 			prev = i
-		case l.Status == LegPlanned:
-			return i, prev, ActionRequest
-		case l.Status == LegCancelled, l.Status == LegFailed && o.superseded(i):
-		default:
-			return -1, prev, ActionNone
+			continue
 		}
+		if l.Status == LegPlanned {
+			return i, prev, ActionRequest
+		}
+		if l.Status == LegCancelled || l.Status == LegFailed && o.superseded(i) {
+			continue
+		}
+		return -1, prev, ActionNone
 	}
 	return -1, prev, ActionComplete
 }
