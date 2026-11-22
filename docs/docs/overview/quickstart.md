@@ -39,7 +39,8 @@ export AMR_FLEET_CONTROL_URL=http://localhost:8082
 MFC_LAYOUT_FILE=config/flow-layout.example.yaml go run ./cmd/api
 ```
 
-The migrations run at boot; `GET /readyz` answers `200` once Postgres and Kafka answer.
+The migrations run at boot; `GET /readyz` answers `200` once Postgres and Kafka answer and both subsystem consumers have
+caught up with the facts published before boot (until then every POST answers `503` `dependency-unavailable`).
 
 ## 3. One transport request
 

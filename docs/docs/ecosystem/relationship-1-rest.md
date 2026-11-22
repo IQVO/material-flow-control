@@ -22,7 +22,7 @@ Base path: the Service `material-flow-control` on :8080 (in-cluster `http://mate
 | `POST /container-tracks/{containerId}/clarification-resolution` | `ResolveClarification` | `{"location"?}` (a place reference; default: where the track is) | `200` `ContainerTrack` | `bad-request` 400 F, `container-track-not-found` 404 R, `unknown-location` 422 F, `not-in-clarification` 409 R |
 | `GET /stations/{stationId}` | `Station` | — | `200` `StationQueue` | `invalid-parameter` 400, `station-not-found` 404 |
 | `GET /subsystems` | `Subsystems` | — | `200` `{"subsystems": [SubsystemCapacity…]}` sorted by kind, id | — |
-| `GET /healthz`, `GET /readyz` | probes | — | `200` | `503` while draining or a dependency (Postgres, Kafka) is down |
+| `GET /healthz`, `GET /readyz` | probes | — | `200` | `503` while draining, while a dependency (Postgres, Kafka) is down, or from boot until both subsystem consumers caught up with the backlog sampled at boot (`subsystem-facts`; every POST then answers `503` `dependency-unavailable`, RETRYABLE) |
 
 Common: `idempotency-key-required` 400 F, `idempotency-key-invalid` 400 F (not 1-128 printable ASCII), `idempotency-key-reused` 409 F, `internal-error` 500 R (never stored), `dependency-unavailable` 503 R. F = FINAL (stored, replayed), O = OUTCOME (the rejection record and `TransportRejected` commit with the stored answer; replayed), R = RETRYABLE (key released, a retry executes).
 

@@ -41,7 +41,7 @@ and every problem type declares one replay class in `internal/adapters/inbound/h
 | `transport-ended` | 409 | RETRYABLE | the transport has ended, or the request was rejected |
 | `not-in-clarification` | 409 | RETRYABLE | the container is not held |
 | `internal-error` | 500 | RETRYABLE | any untyped error or a panic (never stored) |
-| `dependency-unavailable` | 503 | RETRYABLE | `GET /readyz` while Postgres or Kafka is down |
+| `dependency-unavailable` | 503 | RETRYABLE | `GET /readyz` while Postgres or Kafka is down; `GET /readyz` and every POST from boot until both subsystem consumers caught up with the backlog sampled at boot (ruling P4-R20) |
 
 Every 422 carries `reason` and `transport_request_id`. A `GET` is not keyed: its class only matters where the same
 code also answers a POST.
