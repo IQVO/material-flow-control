@@ -111,7 +111,9 @@ func lastFleet(evs []map[string]any) map[string]any {
 }
 
 // caughtUp waits until material-flow-control has handled both subsystem topics up to marks taken now, and its view
-// then has AMR_FLEET/AMR1 AVAILABLE 3 of 3 and ASRS/ASRS1 not UNAVAILABLE. ruling P4-R19: with -count=N its new
+// then has AMR_FLEET/AMR1 AVAILABLE 3 of 3 and ASRS/ASRS1 present and AVAILABLE or DEGRADED, after this run's
+// asrs-control published (its topic grew past the mark taken before the subsystems started; carry, Task 25 second
+// review: an absent ASRS1 used to pass as "not UNAVAILABLE"). ruling P4-R19: with -count=N its new
 // consumer groups replay the earlier runs' facts from offset 0, their boot ramps (UNAVAILABLE) included, and a
 // request made mid-replay was refused SUBSYSTEM_UNAVAILABLE.
 func (f *floor) caughtUp(groups map[string]string) {
@@ -128,8 +130,9 @@ func (f *floor) caughtUp(groups map[string]string) {
 		}
 		_, view = f.call(http.MethodGet, f.mfc+"/subsystems", nil, "")
 		amr, asrs := subsystem(view, "AMR_FLEET", "AMR1"), subsystem(view, "ASRS", "ASRS1")
+		published := kafkatest.EndOffset(f.t, "warehouse.asrs-control.events") > f.asrsStart
 		return !behind && amr["status"] == "AVAILABLE" && amr["units_total"] == 3.0 && amr["units_available"] == 3.0 &&
-			asrs["status"] != "UNAVAILABLE"
+			(asrs["status"] == "AVAILABLE" || asrs["status"] == "DEGRADED") && published
 	}, func() any { return fmt.Sprintf("committed/end offsets %v; GET /subsystems %v", lag, view) })
 }
 

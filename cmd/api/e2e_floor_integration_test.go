@@ -46,7 +46,8 @@ type floor struct {
 	nonce            string
 	// start is the end offset of the MFC topic before this run's floor booted (ruling P4-R19): a positional read never
 	// sees an earlier -count run's facts.
-	start int64
+	start     int64
+	asrsStart int64 // the asrs-control topic's end before this run's subsystems started
 	// marks holds, per accepted order, the MFC topic's end offset taken BEFORE its POST (ruling P4-R19); orders are
 	// this run's accepted orders, in order.
 	marks  map[string]int64
@@ -189,6 +190,7 @@ func startFloor(t *testing.T) *floor {
 		kafkatest.CreateTopic(t, topic)
 	}
 	f.start = kafkatest.EndOffset(t, mfcTopic) // ruling P4-R19
+	f.asrsStart = kafkatest.EndOffset(t, "warehouse.asrs-control.events")
 	f.startEmulator()
 	asrsURL, amrURL := f.startSubsystems()
 	f.amrAPI = amrURL

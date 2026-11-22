@@ -137,13 +137,18 @@ func (f *floor) goodsToPersonIdempotencyAndRejection() (pick, repl string, busy 
 	return pick, repl, busy
 }
 
-// idempotency: the retried PICK made one order. The read runs from the pick's mark up to its outcome.
+// idempotency: the retried PICK made one order. The read runs from the pick's mark to the topic's end offset now (the
+// pick completed before this row), so a second order published after the first outcome is counted too.
+// carry (Task 25 second review): the full window, not up to the first outcome.
 // deviation (Task 25): the brief's `until` returned true at once, so it read NOTHING and counted 0.
 // carry (Task 25 review): count the TransportAccepted facts of the REQUEST (data.transport_request_id), not of the
 // order: a retry that made a second order publishes it under a new order id, which a count by subject never sees.
 func (f *floor) idempotency(pick string) {
 	f.t.Helper()
-	evs := factsFrom(f.t, f.marks[pick], func(evs []map[string]any) bool { return len(named(evs, pick, "TransportCompleted")) == 1 }, 30*time.Second)
+	evs := f.window(f.marks[pick], kafkatest.EndOffset(f.t, mfcTopic))
+	if len(named(evs, pick, "TransportCompleted")) != 1 {
+		f.t.Fatalf("the window from the pick's mark holds %d TransportCompleted of %s, want 1", len(named(evs, pick, "TransportCompleted")), pick)
+	}
 	var orders []any
 	for _, ev := range named(evs, "", "TransportAccepted") {
 		if data(ev)["transport_request_id"] == f.id("pick-1") {
@@ -229,4 +234,13 @@ func (f *floor) capacityLoop() {
 		}
 		return false
 	}, 60*time.Second)
+	// carry (Task 25 second review): the producer saw the disconnect too: amr-fleet-control counts 2 robots online.
+	if code, fleet := f.call(http.MethodGet, f.amrAPI+"/fleets/AMR1", nil, ""); code != http.StatusOK || online(fleet) != 2.0 {
+		f.t.Fatalf("amr-fleet-control GET /fleets/AMR1 after DEGRADED = %d %v, want capacity.robots_online 2", code, fleet)
+	}
+}
+
+func online(fleet map[string]any) any {
+	c, _ := fleet["capacity"].(map[string]any)
+	return c["robots_online"]
 }
