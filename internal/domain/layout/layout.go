@@ -103,9 +103,9 @@ func invalid(format string, args ...any) error {
 // surrounding whitespace would never match a request or a fact. checkTrimmed refuses one, naming the entry and
 // field; fields holds name, value pairs. A value that is only whitespace is left to the "required" checks.
 func checkTrimmed(entry string, fields ...string) error {
-	for i := 1; i < len(fields); i += 2 { // fields comes in name, value pairs: fields[i] is the value of fields[i-1]
-		if v := fields[i]; !blank(v) && v != strings.TrimSpace(v) {
-			return invalid("%s: %s %q has surrounding whitespace", entry, fields[i-1], v)
+	for p := range len(fields) / 2 { // fields comes in name, value pairs: pair p is fields[2p], fields[2p+1]
+		if v := fields[2*p+1]; !blank(v) && v != strings.TrimSpace(v) {
+			return invalid("%s: %s %q has surrounding whitespace", entry, fields[2*p], v)
 		}
 	}
 	return nil
