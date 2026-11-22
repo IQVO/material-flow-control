@@ -184,16 +184,18 @@ func TestCommandRetentionPurgesOnlyOldFinishedCommandsOfEndedOrders(t *testing.T
 	pool := pgtest.Pool(t)
 	seedOrder(t, pool, "O-LIVE", "IN_PROGRESS", retOld)
 	seedOrder(t, pool, "O-ENDED", "COMPLETED", retOld)
+	seedOrder(t, pool, "O-FAILED", "FAILED", retOld) // carry (retention review): a FAILED order has ended too (mutant M5)
 	for _, c := range []struct {
 		id, order, status string
 		at                time.Time
 	}{{"OLD-DONE", "O-ENDED", "DONE", retOld}, {"OLD-FAILED", "O-ENDED", "FAILED", retOld}, {"OLD-PENDING", "O-ENDED", "PENDING", retOld},
-		{"RECENT-DONE", "O-ENDED", "DONE", retRecent}, {"LIVE-DONE", "O-LIVE", "DONE", retOld}, {"GONE-ORDER-DONE", "O-PURGED", "DONE", retOld}} {
+		{"RECENT-DONE", "O-ENDED", "DONE", retRecent}, {"LIVE-DONE", "O-LIVE", "DONE", retOld}, {"GONE-ORDER-DONE", "O-PURGED", "DONE", retOld},
+		{"FAILED-ORDER-DONE", "O-FAILED", "DONE", retOld}} {
 		exec(t, pool, `INSERT INTO subsystem_commands (command_id, transport_order_id, leg_ref, kind, idempotency_key, status, created_at,
 			next_attempt_at, deadline) VALUES ($1, $2, 'LEG', 'REQUEST_LEG', $1, $3, $4, $4, $4)`, c.id, c.order, c.status, c.at)
 	}
-	if n := purge(t, postgres.NewCommandRetention(pool, 100), retCutoff); n != 3 {
-		t.Fatalf("purged %d commands, want 3", n)
+	if n := purge(t, postgres.NewCommandRetention(pool, 100), retCutoff); n != 4 {
+		t.Fatalf("purged %d commands, want 4", n)
 	}
 	wantIDs(t, "commands", ids(t, pool, `SELECT command_id FROM subsystem_commands`), "OLD-PENDING", "RECENT-DONE", "LIVE-DONE")
 }
