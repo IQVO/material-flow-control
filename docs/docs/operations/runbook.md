@@ -130,6 +130,18 @@ SELECT count(*) FROM transport_orders WHERE status IN ('COMPLETED', 'FAILED') AN
 SELECT count(*) FROM outbox_events WHERE published_at < now() - interval '168 hours';
 ```
 
+Migration `0002_retention_indexes` runs at the first boot of the release that brings the retention (every binary
+runs the embedded migrations at boot). It changes four order id columns to `COLLATE "C"` and builds eight indexes in
+ONE transaction ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables), decision 5): until it commits,
+`transport_legs`, `subsystem_commands`, `container_tracks` and `transport_requests` are locked even for reads, and
+`transport_orders`, `container_moves` and `outbox_events` for writes. At 300k orders and 1M moves it took about 1 s;
+it grows with the tables, so check them first (`SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY 2
+DESC`). Its `ALTER TABLE` also waits for every open transaction on those tables, and new queries queue behind it:
+look for long-open sessions first (`SELECT pid, state, xact_start FROM pg_stat_activity WHERE xact_start < now() -
+interval '1 minute'`). On a database with many millions of moves, apply it before the rollout, in a quiet window,
+with the golang-migrate CLI (`migrate -path migrations -database "$MIGRATIONS_DATABASE_URL" up`), so the boot finds
+nothing to do inside its startup-probe budget (60 s).
+
 An attempt-capped outbox row is never purged: re-arm it (`UPDATE outbox_events SET attempts = 0 WHERE id = ...`) once
 the cause is fixed. An order a station still holds as occupant, or a container still in clarification, keeps its
 order until the hold or the slot is released.

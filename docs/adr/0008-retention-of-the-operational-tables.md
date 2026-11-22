@@ -50,6 +50,18 @@ orders they hold.
    index per guard. Every column holding a transport order id moves to `COLLATE "C"`, the collation of
    `transport_orders`' key: a comparison with the key runs under `"C"`, which a default-collation index cannot
    serve. A schema test fails any foreign key into a purged table without an index led by its columns.
+
+   The migration builds its indexes with a plain `CREATE INDEX`, not `CONCURRENTLY`: golang-migrate's postgres
+   driver sends a migration file as ONE simple-query string (no `x-multi-statement`), which Postgres runs as one
+   implicit transaction, and `CREATE INDEX CONCURRENTLY` refuses to run inside a transaction block (a file per
+   index would also leave an `INVALID` index and a dirty version behind on a failure). Until the file commits, the
+   collation changes hold `ACCESS EXCLUSIVE` on `transport_legs`, `subsystem_commands`, `container_tracks` and
+   `transport_requests` (reads wait too) and the index builds hold `SHARE` on `transport_orders`,
+   `container_moves` and `outbox_events` (writes wait). The collation changes rewrite nothing (the type stays
+   `text`, the foreign key is not revalidated). Measured on postgres:16 with the review's seed (300k orders and
+   legs, 1M moves, 600k commands, 300k outbox rows, 50k tracks): the whole file took 0.92 s (index builds 10 to
+   356 ms each, each `ALTER` under 4 ms). The service's units of work wait that long, inside their own 5 s
+   timeouts; the runbook says when to apply it before the rollout instead.
 6. Request records are never deleted (ruling P4-R22). A `transport_requests` row is the tombstone of its
    `transport_request_id`: the order policy deletes the order and its legs and keeps the ACCEPTED record, and no
    policy deletes a REJECTED record. Once the order is purged, a read of the id (`GET /transport-requests/{id}`,
