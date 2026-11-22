@@ -17,9 +17,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/container"
 	kafkago "github.com/segmentio/kafka-go"
 	"github.com/testcontainers/testcontainers-go"
 	tckafka "github.com/testcontainers/testcontainers-go/modules/kafka"
+	"github.com/testcontainers/testcontainers-go/network"
+
+	"github.com/IQVO/material-flow-control/internal/testing/dockernet"
 )
 
 var (
@@ -33,8 +37,17 @@ func Brokers(t *testing.T) []string {
 	t.Helper()
 	once.Do(func() {
 		ctx := context.Background()
+		nw, err := dockernet.Get()
+		if err != nil {
+			errStart = err
+			return
+		}
+		// The broker's hostname is "kafka": the module advertises its BROKER listener as <hostname>:9092, which a
+		// container on the shared network reaches through the alias (InternalBrokers).
 		c, err := tckafka.Run(ctx, "confluentinc/confluent-local:7.6.1", tckafka.WithClusterID("asrs-control-itest"),
-			testcontainers.WithEnv(map[string]string{"KAFKA_AUTO_CREATE_TOPICS_ENABLE": "false"}))
+			testcontainers.WithEnv(map[string]string{"KAFKA_AUTO_CREATE_TOPICS_ENABLE": "false"}),
+			network.WithNetwork([]string{internalHost}, nw),
+			testcontainers.WithConfigModifier(func(c *container.Config) { c.Hostname = internalHost }))
 		if err != nil {
 			errStart = err
 			return
@@ -55,6 +68,17 @@ func Brokers(t *testing.T) []string {
 		t.Fatalf("start kafka: %v", errStart)
 	}
 	return brokers
+}
+
+// internalHost is the broker's name on the dockernet network.
+const internalHost = "kafka"
+
+// InternalBrokers is the broker's address for a CONTAINER on the dockernet network (its BROKER listener); the test
+// process itself uses Brokers.
+func InternalBrokers(t *testing.T) []string {
+	t.Helper()
+	Brokers(t)
+	return []string{internalHost + ":9092"}
 }
 
 // CreateTopic creates a one-partition topic and waits for its leader (CreateTopics returns

@@ -8,6 +8,7 @@ package pgtest
 import (
 	"context"
 	"fmt"
+	neturl "net/url"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,15 +18,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/IQVO/material-flow-control/internal/adapters/outbound/postgres"
+	"github.com/IQVO/material-flow-control/internal/testing/dockernet"
 )
 
 const (
-	user     = "mfc_test"
-	password = "mfc_test"
-	template = "mfc_template"
+	// internalHost is Postgres' name on the dockernet network (NetworkURL).
+	internalHost = "postgres"
+	user         = "mfc_test"
+	password     = "mfc_test"
+	template     = "mfc_template"
 )
 
 var (
@@ -37,8 +42,13 @@ var (
 
 func start() {
 	ctx := context.Background()
+	nw, err := dockernet.Get()
+	if err != nil {
+		errStart = err
+		return
+	}
 	container, errStart = tcpostgres.Run(ctx, "postgres:16-alpine", tcpostgres.WithDatabase("postgres"),
-		tcpostgres.WithUsername(user), tcpostgres.WithPassword(password),
+		tcpostgres.WithUsername(user), tcpostgres.WithPassword(password), network.WithNetwork([]string{internalHost}, nw),
 		testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(90*time.Second)))
 	if errStart != nil {
 		return
@@ -125,4 +135,35 @@ func BarePool(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	return pool
+}
+
+// EmptyURL is the DSN of a fresh database WITHOUT this service's migrations (for a subsystem that runs its own
+// migrations at boot: a migrated template would already hold a schema_migrations version).
+func EmptyURL(t *testing.T) string {
+	t.Helper()
+	once.Do(start)
+	if errStart != nil {
+		t.Fatalf("start postgres: %v", errStart)
+	}
+	ctx := context.Background()
+	name := fmt.Sprintf("empty_%d", seq.Add(1))
+	if err := admin(ctx, "CREATE DATABASE "+name); err != nil {
+		t.Fatalf("create database: %v", err)
+	}
+	url, err := dbURL(ctx, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return url
+}
+
+// NetworkURL is dsn as a CONTAINER on the dockernet network reaches it: host postgres, port 5432.
+func NetworkURL(t *testing.T, dsn string) string {
+	t.Helper()
+	u, err := neturl.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Host = internalHost + ":5432"
+	return u.String()
 }

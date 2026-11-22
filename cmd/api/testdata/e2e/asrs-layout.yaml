@@ -1,0 +1,16 @@
+# asrs-control's layout (ASRS_LAYOUT_FILE): the `asrs` block of world.yaml, verbatim (TestTheFloorFilesDescribeOneFloor).
+# asrs-control refuses unknown fields, so the emulator world itself (with `robots`) cannot be its layout.
+asrs:
+  - id: ASRS1
+    aisles: 2
+    levels: 1
+    slots: 2
+    doubleDeep: true
+    baseSeconds: 1
+    perLevelSeconds: 0.2
+    perSlotSeconds: 0.2
+    ports:
+      - {id: IN1, aisle: 1, kind: INPUT, nodeId: ASRS1-IN1}
+      - {id: OUT1, aisle: 1, kind: OUTPUT, nodeId: ASRS1-OUT1}
+      - {id: IN2, aisle: 2, kind: INPUT, nodeId: ASRS1-IN2}
+      - {id: OUT2, aisle: 2, kind: OUTPUT, nodeId: ASRS1-OUT2}

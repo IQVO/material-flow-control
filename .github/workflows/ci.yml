@@ -164,15 +164,47 @@ jobs:
   # ============================================================
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     # No Postgres service container: every integration test boots its own
     # Postgres (and Kafka) via testcontainers on the runner's Docker daemon.
+    # The e2e test (cmd/api/e2e_subsystems_integration_test.go) runs against the
+    # RELEASED subsystems, each image built from its pinned commit below. Raising
+    # a pin is a deliberate change (a new sha here, the e2e rerun), never `develop`.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check out the equipment emulator the e2e test runs against (pinned commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: IQVO/equipment-emulator
+          ref: b58201e14342c99f5033327214ea317eb2a17962 # v0.1.0 (the released emulator)
+          path: .e2e/equipment-emulator
+      - name: Check out asrs-control (pinned commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: IQVO/asrs-control
+          ref: a3e172d34131928fb5178380e6664d8a117c5ed2 # v0.1.1 (the released asrs-control)
+          path: .e2e/asrs-control
+      - name: Check out amr-fleet-control (pinned commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: IQVO/amr-fleet-control
+          ref: 09a8f1915be5129efbb240dd6730fec640f93635 # v0.1.0 (the released amr-fleet-control; contracts/pinned.json)
+          path: .e2e/amr-fleet-control
+      - name: Build the three subsystem images (BuildKit)
+        run: |
+          set -euo pipefail
+          docker build -t equipment-emulator:e2e .e2e/equipment-emulator
+          docker build -t asrs-control:e2e .e2e/asrs-control
+          docker build -t amr-fleet-control:e2e .e2e/amr-fleet-control
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - name: Integration tests (testcontainers; each test boots its own Postgres/Kafka)
+      - name: Integration tests (testcontainers; Postgres, Kafka, Mosquitto and the three subsystems)
+        env:
+          EQUIPMENT_EMULATOR_IMAGE: equipment-emulator:e2e
+          ASRS_CONTROL_IMAGE: asrs-control:e2e
+          AMR_FLEET_CONTROL_IMAGE: amr-fleet-control:e2e
+          AMR_FLEET_CONTROL_MAP: ${{ github.workspace }}/.e2e/amr-fleet-control/config/map.example.yaml
         run: go test -tags=integration ./... -race -count=1
 
   pinned-contracts:
