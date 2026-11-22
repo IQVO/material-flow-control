@@ -51,6 +51,10 @@ type floor struct {
 	// this run's accepted orders, in order.
 	marks  map[string]int64
 	orders []string
+	// due is every request's due_by, fixed per run: a retry must send the IDENTICAL request, and a due_by computed per
+	// call (second resolution) made the idempotent retry a 409 conflict whenever the two calls straddled a second.
+	// carry (Task 25 review)
+	due string
 }
 
 // id makes a container or request id unique to this run: with -count=N the binary's one broker still holds the
@@ -176,7 +180,8 @@ func (f *floor) startSubsystems() (asrsURL, amrURL string) {
 func startFloor(t *testing.T) *floor {
 	t.Helper()
 	ctx := context.Background()
-	f := &floor{t: t, nonce: strconv.FormatInt(time.Now().UnixNano(), 36), marks: map[string]int64{}}
+	f := &floor{t: t, nonce: strconv.FormatInt(time.Now().UnixNano(), 36), marks: map[string]int64{},
+		due: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
 	brokers := strings.Join(kafkatest.Brokers(t), ",")
 	for _, topic := range []string{"warehouse.asrs-control.events", "warehouse.asrs-control.analytics", "warehouse.amr-fleet-control.events",
 		"warehouse.amr-fleet-control.analytics", mfcTopic, "warehouse.material-flow-control.analytics",
@@ -254,7 +259,7 @@ func (f *floor) transport(id, container, src, dst, purpose string) (int, map[str
 	f.t.Helper()
 	f.n++
 	return f.call(http.MethodPost, f.mfc+"/transport-requests", map[string]any{"transport_request_id": id, "container_id": container,
-		"source": src, "destination": dst, "purpose": purpose, "priority": "NORMAL", "due_by": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)},
+		"source": src, "destination": dst, "purpose": purpose, "priority": "NORMAL", "due_by": f.due},
 		"e2e-"+strconv.Itoa(f.n))
 }
 
