@@ -69,6 +69,24 @@ func TestTheEightAcceptanceRowsAgainstTheRealSubsystems(t *testing.T) {
 	f.completed("outbound", f.accept(f.id("out-1"), f.id("TOTE-2"), "WH1-FWD-FWD1", "WH1-PCK-PK1", "OUTBOUND"), 180*time.Second)
 	f.clarification()
 	f.capacityLoop()
+	f.oneOutcomeEach()
+}
+
+// oneOutcomeEach: after a short settle, ONE read of this run's facts up to the end offset; every order this run
+// accepted has exactly one outcome. ended() stops at an order's first outcome, so a late duplicate passed it.
+// carry (Task 25 review)
+func (f *floor) oneOutcomeEach() {
+	f.t.Helper()
+	time.Sleep(3 * time.Second)
+	evs := f.window(f.start, kafkatest.EndOffset(f.t, mfcTopic))
+	if len(f.orders) != 8 {
+		f.t.Fatalf("this run accepted %d orders %v, want 8 (3 putaways, pick, replenishment, return, outbound, clarification)", len(f.orders), f.orders)
+	}
+	for _, order := range f.orders {
+		if all := outcomes(evs, order); len(all) != 1 {
+			f.t.Errorf("order %s has %d outcomes in this run's facts: %v", order, len(all), all)
+		}
+	}
 }
 
 // putaway: TOTE-1..3 from the decant handoff into the AS/RS (TOTE-3 is the clarification row's container).
