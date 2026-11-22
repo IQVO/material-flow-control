@@ -7,3 +7,4 @@ DROP INDEX IF EXISTS idx_transport_requests_rejected;
 DROP INDEX IF EXISTS idx_transport_requests_order;
 DROP INDEX IF EXISTS idx_transport_orders_open_container;
 DROP INDEX IF EXISTS idx_transport_orders_ended;
+DROP INDEX IF EXISTS idx_transport_legs_order; -- carry (retention review)

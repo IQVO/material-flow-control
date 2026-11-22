@@ -1,5 +1,8 @@
 -- The retention purges' lookups (ADR 0008): each purge finds its terminal rows by an index, and each "a live row still
 -- references it" guard is an index probe, never a scan per candidate row.
+-- carry (retention review): the FK cascade of an order's delete looks its legs up by transport_order_id, once per
+-- deleted order; without this index every lookup was a sequential scan of transport_legs (13.3 s a batch at 300k).
+CREATE INDEX idx_transport_legs_order ON transport_legs (transport_order_id);
 CREATE INDEX idx_transport_orders_ended ON transport_orders (updated_at) WHERE status IN ('COMPLETED', 'FAILED');
 CREATE INDEX idx_transport_orders_open_container ON transport_orders (container_id) WHERE status = 'IN_PROGRESS';
 CREATE INDEX idx_transport_requests_order ON transport_requests (transport_order_id);
