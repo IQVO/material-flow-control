@@ -81,7 +81,6 @@ func assertADepartureAdmitsTheNextInSequence(t *testing.T, q *sq.Queue) {
 	if q.Position("C-d") != 1 || q.Position("C-b") != 2 || q.Position("C-a") != 0 {
 		t.Fatalf("positions = %d %d %d", q.Position("C-d"), q.Position("C-b"), q.Position("C-a"))
 	}
-
 }
 
 func TestOrderIDBreaksAFullTie(t *testing.T) {
