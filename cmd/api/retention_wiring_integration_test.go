@@ -39,6 +39,7 @@ func TestThePurgeLoopRunsTheRetentionPoliciesWithTheDefaultWindows(t *testing.T)
 	for id, at := range map[string]time.Time{"O-OLD": old, "O-RECENT": recent} {
 		mustExec(t, a, `INSERT INTO transport_orders (transport_order_id, container_id, status, internal, snapshot, version, accepted_at,
 			updated_at) VALUES ($1, 'C-1', 'COMPLETED', true, '{}', 1, $2, $2)`, id, at)
+		mustExec(t, a, `INSERT INTO transport_legs (leg_ref, transport_order_id) VALUES ($1 || '.1.1', $1)`, id)
 	}
 	for id, at := range map[string]time.Time{"E-OLD": time.Now().UTC().Add(-169 * time.Hour), "E-RECENT": time.Now().UTC().Add(-167 * time.Hour)} {
 		mustExec(t, a, `INSERT INTO outbox_events (event_id, topic, event_type, subject, dataschema, value, published_at)
@@ -66,7 +67,8 @@ func TestThePurgeLoopRunsTheRetentionPoliciesWithTheDefaultWindows(t *testing.T)
 	}
 	got := purgedPoints(t, reader)
 	// ruling P4-R22: no series for transport_requests: no policy deletes a request record.
-	want := map[string]int64{"idempotency_keys": 0, "processed_events": 0, "transport_orders": 1,
+	// carry (retention review): the order's legs are counted under their own table.
+	want := map[string]int64{"idempotency_keys": 0, "processed_events": 0, "transport_orders": 1, "transport_legs": 1,
 		"container_moves": 0, "subsystem_commands": 0, "outbox_events": 1}
 	if len(got) != len(want) {
 		t.Fatalf("purged points = %v, want %v", got, want)

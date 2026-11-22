@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -303,5 +304,28 @@ func TestAfterTheOrderPurgeTheRecordReadsAndItsOrderIsNotFound(t *testing.T) {
 	}
 	if _, err := postgres.NewOrders(pool).Get(ctx, "O-OLD"); !errors.Is(err, ports.ErrNotFound) {
 		t.Fatalf("the purged order = %v, want ports.ErrNotFound", err)
+	}
+}
+
+// carry (retention review): the purged-rows counter is honest about what the order statement deletes: the orders and
+// their legs, each under its own table (no request record any more, ruling P4-R22).
+func TestTheOrderPurgeCountsItsOrdersAndTheirLegsByTable(t *testing.T) {
+	pool := pgtest.Pool(t)
+	seedOrder(t, pool, "O-OLD-DONE", "COMPLETED", retOld)
+	seedOrder(t, pool, "O-OLD-FAILED", "FAILED", retOld)
+	exec(t, pool, `INSERT INTO transport_legs (leg_ref, transport_order_id) VALUES ('LEG-O-OLD-FAILED-2', 'O-OLD-FAILED')`)
+	seedOrder(t, pool, "O-RECENT-DONE", "COMPLETED", retRecent)
+	got, err := postgres.NewOrderRetention(pool, 1).PurgeTables(context.Background(), retCutoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]int64{"transport_orders": 2, "transport_legs": 3}; !maps.Equal(got, want) {
+		t.Fatalf("purged by table = %v, want %v (batches of 1)", got, want)
+	}
+	for _, p := range []*postgres.Retention{postgres.NewContainerMoveRetention(pool, 10, 1), postgres.NewCommandRetention(pool, 10),
+		postgres.NewOutboxRetention(pool, 10)} {
+		if got, err := p.PurgeTables(context.Background(), retCutoff); err != nil || len(got) != 1 || got[p.Table()] != 0 {
+			t.Fatalf("%s purged by table = %v, %v; want only its own table", p.Table(), got, err)
+		}
 	}
 }

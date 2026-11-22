@@ -39,7 +39,7 @@ W3C trace context propagates on REST in and out and on Kafka in and out.
 | Series | Kind | Labels | Use |
 | --- | --- | --- | --- |
 | `material_flow_control.transports.ended` | counter (`{transport}`) | `purpose`, `outcome` (`completed`, `failed`), `reason` | accepted transports ended (ADR 0007); recorded after commit, so a replay or a redelivery never counts twice; a rising `failed` with `SUBSYSTEM_FAULT` or `TIMEOUT` points at a subsystem |
-| `material_flow_control.retention.purged` | counter (`{row}`) | `table` | rows the hourly purge deleted ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)): `transport_orders`, `transport_requests`, `container_moves`, `subsystem_commands`, `outbox_events`, `idempotency_keys`, `processed_events`; every successful pass adds its count (0 included), a failed pass adds nothing |
+| `material_flow_control.retention.purged` | counter (`{row}`) | `table` | rows the hourly purge deleted ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)): `transport_orders`, `transport_legs` (the legs the order statement deletes with their orders), `container_moves`, `subsystem_commands`, `outbox_events`, `idempotency_keys`, `processed_events`; every successful pass adds its count (0 included), a failed pass adds nothing. No series for `transport_requests`: request records are never deleted (ruling P4-R22) |
 | `material_flow_control.outbox.backlog` | gauge (`{row}`) | none | unpublished outbox rows (rows the relay stopped retrying at `OUTBOX_MAX_ATTEMPTS` included) |
 | `material_flow_control.outbox.lag` | gauge (s) | none | age of the oldest unpublished row; 0 when drained. A growing lag means Kafka is not taking the relay's writes |
 

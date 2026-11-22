@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"net"
 	nethttp "net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -200,16 +202,34 @@ func (a *app) purge(ctx context.Context) {
 func (a *app) purgeOnce(ctx context.Context) {
 	now := time.Now().UTC()
 	for _, p := range a.purgers {
-		n, err := p.store.Purge(ctx, now.Add(-p.keep))
+		counts, err := purgeTables(ctx, p, now.Add(-p.keep))
 		if err != nil {
 			a.log.WarnContext(ctx, "purge failed", "table", p.name, "error", err)
 			continue
 		}
-		if a.purged != nil {
-			a.purged.RowsPurged(ctx, p.name, n)
-		}
-		if n > 0 {
-			a.log.InfoContext(ctx, "purged", "table", p.name, "rows", n)
+		for _, table := range slices.Sorted(maps.Keys(counts)) {
+			n := counts[table]
+			if a.purged != nil {
+				a.purged.RowsPurged(ctx, table, n)
+			}
+			if n > 0 {
+				a.log.InfoContext(ctx, "purged", "table", table, "rows", n)
+			}
 		}
 	}
+}
+
+// tablesPurger is a store whose purge deletes from several tables and counts each (the order retention: orders and
+// their legs). carry (retention review): the counter records every table a purge deleted from.
+type tablesPurger interface {
+	PurgeTables(ctx context.Context, before time.Time) (map[string]int64, error)
+}
+
+// purgeTables runs one pass of p's store, counted by table; a single-table store's rows count under p.name.
+func purgeTables(ctx context.Context, p purger, before time.Time) (map[string]int64, error) {
+	if tp, ok := p.store.(tablesPurger); ok {
+		return tp.PurgeTables(ctx, before)
+	}
+	n, err := p.store.Purge(ctx, before)
+	return map[string]int64{p.name: n}, err
 }

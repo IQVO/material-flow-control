@@ -72,3 +72,26 @@ func TestTheRetentionPoliciesAreWiredWithTheirWindows(t *testing.T) {
 		t.Fatalf("purgers = %v, want %v", got, want)
 	}
 }
+
+// tablesStore deletes from several tables in one statement and counts each (the order policy: orders and legs).
+type tablesStore struct{ counts map[string]int64 }
+
+func (s tablesStore) Purge(context.Context, time.Time) (int64, error) {
+	return s.counts["transport_orders"], nil
+}
+
+func (s tablesStore) PurgeTables(context.Context, time.Time) (map[string]int64, error) {
+	return s.counts, nil
+}
+
+// carry (retention review): a store that counts by table is recorded table by table (transport_legs too), never as
+// one number under the purger's name.
+func TestAPurgePassCountsAMultiTableStoreByTable(t *testing.T) {
+	got := recordedPurges{}
+	a := &app{log: slog.New(slog.NewJSONHandler(io.Discard, nil)), purged: got, purgers: []purger{
+		{"transport_orders", tablesStore{map[string]int64{"transport_orders": 2, "transport_legs": 5}}, time.Hour}}}
+	a.purgeOnce(context.Background())
+	if want := (recordedPurges{"transport_orders": 2, "transport_legs": 5}); !maps.Equal(got, want) {
+		t.Fatalf("counted %v, want %v", got, want)
+	}
+}
