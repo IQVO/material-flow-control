@@ -16,6 +16,9 @@ import (
 // ruling P4-R20: the gate's broker reads against a real broker: a topic's retained range, an unknown topic (nothing
 // to replay), and a group's committed offset (-1 before, the next offset after a commit).
 func TestTheBrokerOffsetsTheCatchUpGateCompares(t *testing.T) {
+	// The broker is booted once per test binary by kafkatest, backed by
+	// github.com/testcontainers/testcontainers-go/modules/kafka (the fitness sensor
+	// TestKafkaIntegrationTestsUseTestcontainers looks for that import path in every Kafka integration test).
 	brokers := kafkatest.Brokers(t)
 	nano := strconv.FormatInt(time.Now().UnixNano(), 36)
 	topic := "catchup.offsets." + nano
