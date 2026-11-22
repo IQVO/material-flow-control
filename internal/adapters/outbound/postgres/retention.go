@@ -87,11 +87,14 @@ func statement(sql string, extra ...any) func(batch int) batchFunc {
 // queue occupant or waiting entry (an occupant keeps its slot after its order ended, until the container leaves).
 // The order's request record goes with it (one statement, so no request record ever names a missing order); its
 // legs go by ON DELETE CASCADE. JSON paths are the domain snapshots' exported field names (json.go).
+// carry (retention review): every order id column is COLLATE "C" like the key (migration 0002), so each guard probes
+// its index; the active-order guard repeats the partial index's predicate (not empty), which a join clause alone does
+// not imply.
 const orderRetentionSQL = `WITH victims AS MATERIALIZED (
 	SELECT o.transport_order_id FROM transport_orders o
 	WHERE o.status IN ('COMPLETED', 'FAILED') AND o.updated_at < $1
 	AND NOT EXISTS (SELECT 1 FROM subsystem_commands c WHERE c.transport_order_id = o.transport_order_id AND c.status = 'PENDING')
-	AND NOT EXISTS (SELECT 1 FROM container_tracks t WHERE t.active_order_id = o.transport_order_id)
+	AND NOT EXISTS (SELECT 1 FROM container_tracks t WHERE t.active_order_id <> '' AND t.active_order_id = o.transport_order_id)
 	AND NOT EXISTS (SELECT 1 FROM container_tracks t WHERE t.in_clarification
 		AND t.snapshot -> 'Clarification' ->> 'OrderID' = o.transport_order_id)
 	AND NOT EXISTS (SELECT 1 FROM station_queues q

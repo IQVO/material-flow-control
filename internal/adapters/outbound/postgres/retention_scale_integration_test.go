@@ -80,8 +80,8 @@ func (p *plans) notice(_ *pgconn.PgConn, n *pgconn.Notice) {
 }
 
 // explainedPool is a pool on url whose sessions log the plan of every statement, nested ones included, to the
-// client (auto_explain at NOTICE), where p collects them.
-func explainedPool(t *testing.T, url string, p *plans) *pgxpool.Pool {
+// client (auto_explain at NOTICE), where p collects them; settings are extra session SETs.
+func explainedPool(t *testing.T, url string, p *plans, settings ...string) *pgxpool.Pool {
 	t.Helper()
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
@@ -92,6 +92,11 @@ func explainedPool(t *testing.T, url string, p *plans) *pgxpool.Pool {
 		_, err := c.Exec(ctx, `LOAD 'auto_explain'; SET auto_explain.log_min_duration = 0;
 			SET auto_explain.log_nested_statements = on; SET auto_explain.log_format = json;
 			SET auto_explain.log_level = notice`)
+		for _, s := range settings {
+			if err == nil {
+				_, err = c.Exec(ctx, s)
+			}
+		}
 		return err
 	}
 	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
@@ -103,22 +108,45 @@ func explainedPool(t *testing.T, url string, p *plans) *pgxpool.Pool {
 }
 
 type planNode struct {
-	NodeType string     `json:"Node Type"`
-	Relation string     `json:"Relation Name"`
-	Plans    []planNode `json:"Plans"`
+	NodeType  string     `json:"Node Type"`
+	Relation  string     `json:"Relation Name"`
+	Index     string     `json:"Index Name"`
+	IndexCond string     `json:"Index Cond"`
+	Plans     []planNode `json:"Plans"`
 }
 
 // scansOf returns the node types that read relation in every collected plan.
 func (p *plans) scansOf(t *testing.T, relation string) []string {
 	t.Helper()
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	var out []string
-	var walk func(n planNode)
-	walk = func(n planNode) {
+	p.walk(t, func(n planNode) {
 		if n.Relation == relation {
 			out = append(out, n.NodeType)
 		}
+	})
+	return out
+}
+
+// indexConds returns the conditions every collected plan looks rows up by index with (a full index scan has none).
+func (p *plans) indexConds(t *testing.T, index string) []string {
+	t.Helper()
+	var out []string
+	p.walk(t, func(n planNode) {
+		if n.Index == index && n.IndexCond != "" {
+			out = append(out, n.IndexCond)
+		}
+	})
+	return out
+}
+
+// walk calls visit on every node of every collected plan.
+func (p *plans) walk(t *testing.T, visit func(planNode)) {
+	t.Helper()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var walk func(n planNode)
+	walk = func(n planNode) {
+		visit(n)
 		for _, c := range n.Plans {
 			walk(c)
 		}
@@ -132,7 +160,6 @@ func (p *plans) scansOf(t *testing.T, relation string) []string {
 		}
 		walk(doc.Plan)
 	}
-	return out
 }
 
 // seedOrders writes n ended orders with one leg each; the first old of them were last written before the cutoff.
