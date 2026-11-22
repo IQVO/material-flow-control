@@ -98,8 +98,18 @@ func (a *Asrs) ConfirmPickup(_ context.Context, key, asrsID, portID, containerID
 	return a.record(Call{Op: "ConfirmPickup", Key: key, SubsystemID: asrsID, PortID: portID, ContainerID: containerID})
 }
 
+// SetRecommended sets what RecommendedInputPort answers, under the script's mutex (a test may change it while the
+// dispatcher runs). carry (Task 8 review)
+func (a *Asrs) SetRecommended(port string, err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.Recommended, a.RecommendErr = port, err
+}
+
 func (a *Asrs) RecommendedInputPort(_ context.Context, asrsID string) (string, error) {
 	a.observe(Call{Op: "RecommendedInputPort", SubsystemID: asrsID})
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return a.Recommended, a.RecommendErr
 }
 

@@ -85,8 +85,9 @@ func (s *Store) with(fn func(t *tables)) {
 	fn(&s.t)
 }
 
-// FailNext arms the next write of repo ("orders", "tracks", "stations", "commands", "events", "requests",
-// "capacities") to fail with ErrInjected (atomicity tests).
+// FailNext arms the next write of repo to fail with ErrInjected (atomicity tests): "requests" (Insert), "orders"
+// (Insert, Save), "tracks" (Save), "stations" (Save), "capacities" (Save), "commands" (Enqueue only) and "events"
+// (Append). Every other repository (units, inbox, idempotency) and every other write ignores it. carry (Task 8 review)
 func (s *Store) FailNext(repo string) { s.with(func(*tables) { s.failOn[repo] = true }) }
 
 func (s *Store) injected(repo string) error {
@@ -123,16 +124,28 @@ type UnitOfWork struct{ s *Store }
 // NewUnitOfWork builds the memory ports.UnitOfWork.
 func NewUnitOfWork(s *Store) *UnitOfWork { return &UnitOfWork{s: s} }
 
-// Do runs fn atomically; a nested Do joins the outer one.
-func (u *UnitOfWork) Do(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+// Do runs fn atomically; a nested Do joins the outer one. The AfterCommit hooks run once the store is released, so a
+// hook may open a unit of work of its own. carry (Task 8 review)
+func (u *UnitOfWork) Do(ctx context.Context, fn func(ctx context.Context) error) error {
 	if _, ok := ctx.Value(txKey{}).(*txState); ok {
 		return fn(ctx)
 	}
+	st := &txState{}
+	if err := u.commit(ctx, st, fn); err != nil {
+		return err
+	}
+	for _, h := range st.hooks {
+		h()
+	}
+	return nil
+}
+
+// commit runs fn under the transaction mutex and restores every table when fn fails or panics.
+func (u *UnitOfWork) commit(ctx context.Context, st *txState, fn func(ctx context.Context) error) (err error) {
 	u.s.tx.Lock()
 	defer u.s.tx.Unlock()
 	var saved tables
 	u.s.with(func(t *tables) { saved = t.clone() })
-	st := &txState{}
 	defer func() {
 		if r := recover(); r != nil {
 			u.s.with(func(t *tables) { *t = saved })
@@ -141,12 +154,8 @@ func (u *UnitOfWork) Do(ctx context.Context, fn func(ctx context.Context) error)
 	}()
 	if err = fn(context.WithValue(ctx, txKey{}, st)); err != nil {
 		u.s.with(func(t *tables) { *t = saved })
-		return err
 	}
-	for _, h := range st.hooks {
-		h()
-	}
-	return nil
+	return err
 }
 
 // AfterCommit registers fn on the outermost unit of work, or runs it at once outside one.
