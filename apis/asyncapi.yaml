@@ -9,7 +9,8 @@ info:
     and the stations. CloudEvents 1.0 structured mode; every event is written to warehouse.material-flow-control.events
     and warehouse.material-flow-control.analytics under the same id; the Kafka key is the subject; every *_at is
     material-flow-control's own clock. No payload names a robot, leg, node, shuttle, aisle, rack position, port or
-    storage job (seam decision 3).
+    storage job (seam decision 3). It consumes ten facts of the two subsystem controllers (asrsControlEvents,
+    amrFleetControlEvents; WCS context map relationships 4 and 5) and commits every other type on those topics past.
   x-classification: Supporting
   contact:
     name: material-flow-control maintainers
@@ -55,6 +56,24 @@ channels:
       TransportFailed: {$ref: '#/components/messages/TransportFailed'}
       ContainerSentToClarification: {$ref: '#/components/messages/ContainerSentToClarification'}
       SubsystemCapacityChanged: {$ref: '#/components/messages/SubsystemCapacityChanged'}
+  asrsControlEvents:
+    address: warehouse.asrs-control.events
+    description: asrs-control's integration topic (WCS context map relationship 5), consumed by group MFC_ASRS_CONSUMER_GROUP; every other type on it is committed past.
+    messages:
+      ConsumedContainerStored: {$ref: '#/components/messages/ConsumedContainerStored'}
+      ConsumedContainerPresentedAtPort: {$ref: '#/components/messages/ConsumedContainerPresentedAtPort'}
+      ConsumedStorageJobFailed: {$ref: '#/components/messages/ConsumedStorageJobFailed'}
+      ConsumedEquipmentStateChanged: {$ref: '#/components/messages/ConsumedEquipmentStateChanged'}
+      ConsumedAsrsCapacityChanged: {$ref: '#/components/messages/ConsumedAsrsCapacityChanged'}
+  amrFleetControlEvents:
+    address: warehouse.amr-fleet-control.events
+    description: amr-fleet-control's integration topic (WCS context map relationship 4), consumed by group MFC_AMR_CONSUMER_GROUP; RobotStateChanged, DeadlockDetected and every other type on it are committed past.
+    messages:
+      ConsumedLegAssigned: {$ref: '#/components/messages/ConsumedLegAssigned'}
+      ConsumedContainerPickedUp: {$ref: '#/components/messages/ConsumedContainerPickedUp'}
+      ConsumedLegCompleted: {$ref: '#/components/messages/ConsumedLegCompleted'}
+      ConsumedLegFailed: {$ref: '#/components/messages/ConsumedLegFailed'}
+      ConsumedFleetCapacityChanged: {$ref: '#/components/messages/ConsumedFleetCapacityChanged'}
 operations:
   publishTransportRejected: {action: send, description: 'A transport request was refused at once (UNKNOWN_CONTAINER, CONTAINER_BUSY, DESTINATION_UNREACHABLE, SUBSYSTEM_UNAVAILABLE); written with the stored 422 answer.', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/TransportRejected'}]}
   publishTransportAccepted: {action: send, description: 'A transport request was accepted and its transport order created; the first leg is requested after commit.', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/TransportAccepted'}]}
@@ -63,6 +82,8 @@ operations:
   publishTransportFailed: {action: send, description: 'A transport order ended without reaching its destination, with a reason code.', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/TransportFailed'}]}
   publishContainerSentToClarification: {action: send, description: 'A container was held at clarification (no read, mismatch, not at source or port, storage map mismatch, on a failed robot).', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/ContainerSentToClarification'}]}
   publishSubsystemCapacityChanged: {action: send, description: 'A subsystem or station capacity snapshot changed (published on change, never periodically).', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/SubsystemCapacityChanged'}]}
+  receiveAsrsControlEvents: {action: receive, description: 'The five asrs-control facts that confirm or fail an AS/RS leg and feed the routing and capacity views; inbox claim and effect in one unit of work, bounded retry then warehouse.asrs-control.events.dlq.', channel: {$ref: '#/channels/asrsControlEvents'}, messages: [{$ref: '#/channels/asrsControlEvents/messages/ConsumedContainerStored'}, {$ref: '#/channels/asrsControlEvents/messages/ConsumedContainerPresentedAtPort'}, {$ref: '#/channels/asrsControlEvents/messages/ConsumedStorageJobFailed'}, {$ref: '#/channels/asrsControlEvents/messages/ConsumedEquipmentStateChanged'}, {$ref: '#/channels/asrsControlEvents/messages/ConsumedAsrsCapacityChanged'}]}
+  receiveAmrFleetControlEvents: {action: receive, description: 'The five amr-fleet-control facts that confirm or fail an AMR leg and feed the capacity view; inbox claim and effect in one unit of work, bounded retry then warehouse.amr-fleet-control.events.dlq.', channel: {$ref: '#/channels/amrFleetControlEvents'}, messages: [{$ref: '#/channels/amrFleetControlEvents/messages/ConsumedLegAssigned'}, {$ref: '#/channels/amrFleetControlEvents/messages/ConsumedContainerPickedUp'}, {$ref: '#/channels/amrFleetControlEvents/messages/ConsumedLegCompleted'}, {$ref: '#/channels/amrFleetControlEvents/messages/ConsumedLegFailed'}, {$ref: '#/channels/amrFleetControlEvents/messages/ConsumedFleetCapacityChanged'}]}
 components:
   messages:
     TransportRejected:
@@ -169,6 +190,136 @@ components:
                     dataschema: 'urn:warehouse:material-flow-control:events:SubsystemCapacityChanged:v1',
                     data: {subsystem_kind: AMR_FLEET, subsystem_id: AMR1, status: UNAVAILABLE, units_total: 0, units_available: 0, open_work: 3,
                            capacity_per_hour: 0, buffer_limit: 0, occupied: 0, queue_depth: 0, measured_at: '2026-11-20T08:00:00Z'}}
+    ConsumedContainerStored:
+      name: ContainerStored
+      title: ContainerStored (consumed)
+      summary: A storage job stored a container; its track moves into the AS/RS and the STORE leg ends.
+      description: '`type` = `com.warehouse.wes.asrs-control.storagejob.ContainerStored`. The producer''s own contract (pinned at contracts/asrs-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.asrs-control.storagejob.ContainerStored}
+              data: {type: object, required: [storage_job_id, asrs_id, container_id, port_id, stored_at], properties: {storage_job_id: {}, asrs_id: {}, container_id: {}, port_id: {}, stored_at: {}, reference: {}}}
+    ConsumedContainerPresentedAtPort:
+      name: ContainerPresentedAtPort
+      title: ContainerPresentedAtPort (consumed)
+      summary: A retrieve presented a container at an output port; scan_result READ starts the next leg, NO_READ or MISMATCH sends it to clarification.
+      description: '`type` = `com.warehouse.wes.asrs-control.storagejob.ContainerPresentedAtPort`. The producer''s own contract (pinned at contracts/asrs-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.asrs-control.storagejob.ContainerPresentedAtPort}
+              data: {type: object, required: [storage_job_id, asrs_id, container_id, port_id, scan_result, presented_at], properties: {storage_job_id: {}, asrs_id: {}, container_id: {}, port_id: {}, scan_result: {}, presented_at: {}, reference: {}, scanned_container_id: {}}}
+    ConsumedStorageJobFailed:
+      name: StorageJobFailed
+      title: StorageJobFailed (consumed)
+      summary: A storage job failed; a STORE is re-planned once through another input port, a RETRIEVE fails the transport, CONTAINER_NOT_AT_PORT and STORAGE_MAP_MISMATCH send the container to clarification.
+      description: '`type` = `com.warehouse.wes.asrs-control.storagejob.StorageJobFailed`. The producer''s own contract (pinned at contracts/asrs-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.asrs-control.storagejob.StorageJobFailed}
+              data: {type: object, required: [storage_job_id, asrs_id, job_kind, container_id, port_id, reason, failed_at], properties: {storage_job_id: {}, asrs_id: {}, job_kind: {}, container_id: {}, port_id: {}, reason: {}, failed_at: {}, reference: {}, plc_reason: {}}}
+    ConsumedEquipmentStateChanged:
+      name: EquipmentStateChanged
+      title: EquipmentStateChanged (consumed)
+      summary: An AS/RS unit changed its PackML state; feeds the routing view of available aisles.
+      description: '`type` = `com.warehouse.wes.asrs-control.equipmentunit.EquipmentStateChanged`. The producer''s own contract (pinned at contracts/asrs-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.asrs-control.equipmentunit.EquipmentStateChanged}
+              data: {type: object, required: [asrs_id, unit_id, aisle, state, previous_state, changed_at], properties: {asrs_id: {}, unit_id: {}, aisle: {}, state: {}, previous_state: {}, changed_at: {}}}
+    ConsumedAsrsCapacityChanged:
+      name: AsrsCapacityChanged
+      title: AsrsCapacityChanged (consumed)
+      summary: The AS/RS capacity snapshot; copied into SubsystemCapacityChanged for kind ASRS.
+      description: '`type` = `com.warehouse.wes.asrs-control.asrs.AsrsCapacityChanged`. The producer''s own contract (pinned at contracts/asrs-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.asrs-control.asrs.AsrsCapacityChanged}
+              data: {type: object, required: [asrs_id, units_total, units_available, positions_total, positions_free, open_jobs, measured_at], properties: {asrs_id: {}, units_total: {}, units_available: {}, positions_total: {}, positions_free: {}, open_jobs: {}, measured_at: {}}}
+    ConsumedLegAssigned:
+      name: LegAssigned
+      title: LegAssigned (consumed)
+      summary: A leg was assigned to a robot; the leg is in progress (matched by reference).
+      description: '`type` = `com.warehouse.wes.amr-fleet-control.mission.LegAssigned`. The producer''s own contract (pinned at contracts/amr-fleet-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.amr-fleet-control.mission.LegAssigned}
+              data: {type: object, required: [leg_id, fleet_id, container_id, from_handoff_point_id, to_handoff_point_id, robot, map_version, assigned_at], properties: {leg_id: {}, fleet_id: {}, container_id: {}, from_handoff_point_id: {}, to_handoff_point_id: {}, robot: {}, map_version: {}, assigned_at: {}, reference: {}}}
+    ConsumedContainerPickedUp:
+      name: ContainerPickedUp
+      title: ContainerPickedUp (consumed)
+      summary: A robot picked the container up; the track moves onto the robot, an AS/RS output-port pickup is confirmed to asrs-control, a station slot is freed.
+      description: '`type` = `com.warehouse.wes.amr-fleet-control.mission.ContainerPickedUp`. The producer''s own contract (pinned at contracts/amr-fleet-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.amr-fleet-control.mission.ContainerPickedUp}
+              data: {type: object, required: [leg_id, fleet_id, container_id, from_handoff_point_id, robot, picked_up_at], properties: {leg_id: {}, fleet_id: {}, container_id: {}, from_handoff_point_id: {}, robot: {}, picked_up_at: {}, reference: {}}}
+    ConsumedLegCompleted:
+      name: LegCompleted
+      title: LegCompleted (consumed)
+      summary: A leg reached its target handoff point; the next leg starts or the transport completes.
+      description: '`type` = `com.warehouse.wes.amr-fleet-control.mission.LegCompleted`. The producer''s own contract (pinned at contracts/amr-fleet-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.amr-fleet-control.mission.LegCompleted}
+              data: {type: object, required: [leg_id, fleet_id, container_id, to_handoff_point_id, robot, completed_at], properties: {leg_id: {}, fleet_id: {}, container_id: {}, to_handoff_point_id: {}, robot: {}, completed_at: {}, reference: {}}}
+    ConsumedLegFailed:
+      name: LegFailed
+      title: LegFailed (consumed)
+      summary: A leg failed; before the pickup it is retried as a new attempt up to LEG_RETRY_LIMIT, PICK_FAILED or a container on a failed robot sends it to clarification.
+      description: '`type` = `com.warehouse.wes.amr-fleet-control.mission.LegFailed`. The producer''s own contract (pinned at contracts/amr-fleet-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.amr-fleet-control.mission.LegFailed}
+              data: {type: object, required: [leg_id, fleet_id, container_id, from_handoff_point_id, to_handoff_point_id, reason, container_on_robot, failed_at], properties: {leg_id: {}, fleet_id: {}, container_id: {}, from_handoff_point_id: {}, to_handoff_point_id: {}, reason: {}, container_on_robot: {}, failed_at: {}, reference: {}, robot: {}, robot_error: {}}}
+    ConsumedFleetCapacityChanged:
+      name: FleetCapacityChanged
+      title: FleetCapacityChanged (consumed)
+      summary: The AMR fleet capacity snapshot; copied into SubsystemCapacityChanged for kind AMR_FLEET.
+      description: '`type` = `com.warehouse.wes.amr-fleet-control.fleet.FleetCapacityChanged`. The producer''s own contract (pinned at contracts/amr-fleet-control.asyncapi.yaml) is authoritative; restated here are only the fields this consumer reads, and a fact missing a required one is dead-lettered.'
+      contentType: application/cloudevents+json
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/ConsumedEvent'
+          - type: object
+            properties:
+              type: {type: string, const: com.warehouse.wes.amr-fleet-control.fleet.FleetCapacityChanged}
+              data: {type: object, required: [fleet_id, robots_total, robots_online, robots_available, robots_charging, robots_held, legs_queued, legs_active, changed_at], properties: {fleet_id: {}, robots_total: {}, robots_online: {}, robots_available: {}, robots_charging: {}, robots_held: {}, legs_queued: {}, legs_active: {}, changed_at: {}}}
   schemas:
     CloudEventEnvelope:
       type: object
@@ -182,6 +333,18 @@ components:
         time: {type: string, format: date-time}
         datacontenttype: {type: string, const: application/json}
         dataschema: {type: string}
+        data: {type: object}
+    ConsumedEvent:
+      description: The CloudEvents 1.0 structured envelope of a consumed subsystem fact (its producer sets source and dataschema).
+      type: object
+      required: [specversion, id, source, type, time, data]
+      properties:
+        specversion: {type: string, const: '1.0'}
+        id: {type: string}
+        source: {type: string}
+        type: {type: string}
+        subject: {type: string}
+        time: {type: string, format: date-time}
         data: {type: object}
     TransportRejectedEvent:
       allOf:

@@ -32,8 +32,13 @@ func TestEveryAsyncAPIExampleIsTheEncoderOutputOfItsGoldenCase(t *testing.T) {
 	if err := yaml.Unmarshal(b, &doc); err != nil {
 		t.Fatal(err)
 	}
+	for name := range doc.Components.Messages {
+		if strings.HasPrefix(name, "Consumed") { // consumed subsystem facts are not ours to encode
+			delete(doc.Components.Messages, name)
+		}
+	}
 	if len(doc.Components.Messages) != 7 {
-		t.Fatalf("%d messages, want 7", len(doc.Components.Messages))
+		t.Fatalf("%d published messages, want 7", len(doc.Components.Messages))
 	}
 	for name, m := range doc.Components.Messages {
 		for _, ex := range m.Examples {
