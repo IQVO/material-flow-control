@@ -22,6 +22,9 @@ type Server struct {
 	Idempotency func(http.Handler) http.Handler
 	Readiness   *Readiness
 	ServiceName string
+	// CaughtUp is nil once the subsystem consumers applied every fact published before boot (ruling P4-R20); until
+	// then no POST is decided. A nil CaughtUp means no gate.
+	CaughtUp func() error
 }
 
 // NewRouter builds the chi router: Tier 1 telemetry, the request log, panic recovery, then the routes; every POST
@@ -47,6 +50,7 @@ func NewRouter(s *Server, logger *slog.Logger) http.Handler {
 	r.Get("/stations/{stationId}", s.handleGetStation)
 	r.Get("/subsystems", s.handleSubsystems)
 	r.Group(func(r chi.Router) {
+		r.Use(s.decideAfterCatchUp)
 		if s.Idempotency != nil {
 			r.Use(s.Idempotency)
 		}
@@ -55,4 +59,19 @@ func NewRouter(s *Server, logger *slog.Logger) http.Handler {
 		r.Post("/container-tracks/{containerId}/clarification-resolution", s.handleResolve)
 	})
 	return r
+}
+
+// decideAfterCatchUp answers every POST 503 dependency-unavailable (RETRYABLE) while the subsystem facts published
+// before boot are still being applied: a request decided on that state could be refused for good (decision D7). It
+// runs before the Idempotency middleware, so a refused attempt reserves and stores no key. ruling P4-R20
+func (s *Server) decideAfterCatchUp(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.CaughtUp != nil {
+			if err := s.CaughtUp(); err != nil {
+				writeProblem(w, r, dependencyUnavailable, "not ready to decide: "+err.Error())
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

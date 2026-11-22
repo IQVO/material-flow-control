@@ -53,21 +53,26 @@ func wire(ctx context.Context, cfg config, log *slog.Logger) (*app, error) {
 		pool.Close()
 		return nil, err
 	}
+	// ruling P4-R20: nothing is decided and /readyz is not ready before both consumers caught up with the backlog.
+	catchUp := kafka.NewCatchUp(cfg.Brokers, log, kafka.Subscription{Topic: kafka.AsrsTopic, Group: cfg.AsrsGroup},
+		kafka.Subscription{Topic: kafka.AmrTopic, Group: cfg.AmrGroup})
 	readiness := mfchttp.NewReadiness(2*time.Second, time.Second,
 		mfchttp.Dependency{Name: "postgres", Check: func(ctx context.Context) error { return pool.Ping(ctx) }},
-		mfchttp.Dependency{Name: "kafka", Check: kafkaCheck(cfg.Brokers)})
+		mfchttp.Dependency{Name: "kafka", Check: kafkaCheck(cfg.Brokers)},
+		mfchttp.Dependency{Name: "subsystem-facts", Check: func(context.Context) error { return catchUp.Err() }})
 	idem := mfchttp.NewIdempotency(postgres.NewIdempotencyStore(pool), uow, system.Clock{})
 	sink := outkafka.NewRelaySink(cfg.Brokers)
 	relay := outbox.NewOutboxRelay(outboxRepo, sink, log, outbox.WithInterval(cfg.OutboxInterval),
 		outbox.WithBatchSize(cfg.OutboxBatch), outbox.WithMaxAttempts(cfg.OutboxMaxAttempts))
 	a := &app{cfg: cfg, log: log, pool: pool, svc: svc, kick: k, readiness: readiness,
 		server: &nethttp.Server{Handler: mfchttp.NewRouter(&mfchttp.Server{Service: svc, Idempotency: idem.Middleware, Readiness: readiness,
-			ServiceName: cfg.ServiceName}, log), ReadHeaderTimeout: 5 * time.Second},
+			ServiceName: cfg.ServiceName, CaughtUp: catchUp.Err}, log), ReadHeaderTimeout: 5 * time.Second},
+		caughtUp:  catchUp.Err,
 		consumers: stoppables(newConsumers(cfg, svc, log)),
 		closers:   []func(){func() { _ = sink.Close() }, pool.Close},
 		purgers: []purger{{"idempotency_keys", postgres.NewIdempotencyStore(pool), mfchttp.IdempotencyWindow},
 			{"processed_events", postgres.NewProcessedEvents(pool), inboxRetention}}}
-	a.loops = []func(context.Context){a.dispatch, a.tick, a.purge, func(ctx context.Context) { _ = relay.Run(ctx) }}
+	a.loops = []func(context.Context){catchUp.Run, a.dispatch, a.tick, a.purge, func(ctx context.Context) { _ = relay.Run(ctx) }}
 	return a, nil
 }
 

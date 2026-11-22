@@ -31,6 +31,8 @@ type app struct {
 	loops     []func(context.Context)
 	closers   []func()
 	purgers   []purger
+	// caughtUp is nil once the subsystem facts published before boot are applied (ruling P4-R20); nil = no gate.
+	caughtUp func() error
 }
 
 // stoppable is one fact consumer as run sees it: run until ctx ends, then close. carry (Task 15
@@ -153,7 +155,11 @@ func (a *app) dispatch(ctx context.Context) {
 }
 
 // tick fails stale legs TIMEOUT (decision D16).
-func (a *app) tick(ctx context.Context) {
+func (a *app) tick(ctx context.Context) { a.tickLoop(ctx, a.svc.Tick) }
+
+// tickLoop runs tick every TickInterval, but never before the subsystem facts published before boot are applied: a
+// leg whose progress sits in that backlog is not stale (ruling P4-R20).
+func (a *app) tickLoop(ctx context.Context, tick func(context.Context) (int, error)) {
 	t := time.NewTicker(a.cfg.TickInterval)
 	defer t.Stop()
 	for {
@@ -161,7 +167,10 @@ func (a *app) tick(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if _, err := a.svc.Tick(ctx); err != nil {
+			if a.caughtUp != nil && a.caughtUp() != nil {
+				continue
+			}
+			if _, err := tick(ctx); err != nil {
 				a.log.WarnContext(ctx, "tick failed", "error", err)
 			}
 		}

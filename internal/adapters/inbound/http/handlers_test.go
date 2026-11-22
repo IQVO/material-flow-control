@@ -30,7 +30,7 @@ type api struct {
 	orders *memory.Orders
 }
 
-func newAPI(t *testing.T) *api {
+func newAPI(t *testing.T, opts ...func(*mfchttp.Server)) *api {
 	t.Helper()
 	l, err := config.LoadLayout("../../../../config/flow-layout.example.yaml")
 	if err != nil {
@@ -49,8 +49,11 @@ func newAPI(t *testing.T) *api {
 		t.Fatal(err)
 	}
 	idem := mfchttp.NewIdempotency(memory.NewIdempotency(s), uow, clock)
-	a.h = mfchttp.NewRouter(&mfchttp.Server{Service: svc, Idempotency: idem.Middleware, Readiness: mfchttp.NewReadiness(time.Second, time.Second)},
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv := &mfchttp.Server{Service: svc, Idempotency: idem.Middleware, Readiness: mfchttp.NewReadiness(time.Second, time.Second)}
+	for _, o := range opts {
+		o(srv)
+	}
+	a.h = mfchttp.NewRouter(srv, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return a
 }
 
