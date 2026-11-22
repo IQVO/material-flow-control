@@ -4,7 +4,9 @@
 package stationqueue
 
 import (
-	"sort"
+	"cmp"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/domain/transportrequest"
@@ -68,23 +70,18 @@ func (q *Queue) Occupants() []Occupant { return append([]Occupant(nil), q.s.Occu
 // SetBufferLimit applies the configured limit; occupants above a lowered limit stay until they leave.
 func (q *Queue) SetBufferLimit(n int) { q.s.BufferLimit = n }
 
-func less(a, b Entry) bool {
-	if a.Priority.Rank() != b.Priority.Rank() {
-		return a.Priority.Rank() < b.Priority.Rank()
-	}
-	if !a.DueBy.Equal(b.DueBy) {
-		return a.DueBy.Before(b.DueBy)
-	}
-	if !a.ReadyAt.Equal(b.ReadyAt) {
-		return a.ReadyAt.Before(b.ReadyAt)
-	}
-	return a.OrderID < b.OrderID
+// compare is the admission order (decision D11): URGENT before NORMAL, then earlier due_by, then earlier readiness,
+// then order id. Written as one comparison chain with no relational operator, so no boundary mutant is equivalent
+// (Task 26 mutation work; the order is the brief's less, unchanged).
+func compare(a, b Entry) int {
+	return cmp.Or(cmp.Compare(a.Priority.Rank(), b.Priority.Rank()), a.DueBy.Compare(b.DueBy), a.ReadyAt.Compare(b.ReadyAt),
+		strings.Compare(a.OrderID, b.OrderID))
 }
 
 // Waiting returns the waiting entries in admission order.
 func (q *Queue) Waiting() []Entry {
 	w := append([]Entry(nil), q.s.Waiting...)
-	sort.SliceStable(w, func(i, j int) bool { return less(w[i], w[j]) })
+	slices.SortStableFunc(w, compare)
 	return w
 }
 
@@ -158,7 +155,7 @@ func (q *Queue) Drop(orderID string) bool {
 // Position is a container's 1-based place among the occupants in admission order; 0 when absent.
 func (q *Queue) Position(containerID string) int {
 	occ := q.Occupants()
-	sort.Slice(occ, func(i, j int) bool { return occ[i].Seq < occ[j].Seq })
+	slices.SortFunc(occ, func(a, b Occupant) int { return cmp.Compare(a.Seq, b.Seq) }) // unique Seq
 	for i, o := range occ {
 		if o.ContainerID == containerID {
 			return i + 1
