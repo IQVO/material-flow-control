@@ -82,7 +82,8 @@ Every fact wait is positional (ruling P4-R19): it reads from a mark, `kafkatest.
 The capacity loop requires the last fleet fact before its mark to be the idle fleet (`AVAILABLE` 3 of 3), and the
 `DEGRADED` fact to come after it.
 Before the first row the floor waits until material-flow-control's consumer groups have committed both subsystem
-topics up to their end offsets (`kafkatest.Committed`) and `GET /subsystems` shows `AMR1` `AVAILABLE` 3 of 3: with
+topics up to their end offsets (`kafkatest.Committed`), `GET /readyz` is ready (the P4-R20 gate opened) and
+`GET /subsystems` shows `AMR1` `AVAILABLE` 3 of 3: with
 `-count=N` a new group replays the earlier runs' facts, their boot ramps included.
 
 CI's `integration` job checks out the three commits, builds the images and sets the four variables. Locally (an arm64

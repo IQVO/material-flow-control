@@ -120,7 +120,8 @@ func (f *floor) caughtUp(groups map[string]string) {
 	f.t.Helper()
 	lag := map[string][2]int64{}
 	var view map[string]any
-	f.eventually("material-flow-control caught up with both subsystems, AMR1 AVAILABLE 3 of 3", 60*time.Second, func() bool {
+	var readyz int
+	f.eventually("material-flow-control caught up with both subsystems (/readyz ready), AMR1 AVAILABLE 3 of 3", 60*time.Second, func() bool {
 		behind := false
 		for topic, group := range groups {
 			end := kafkatest.EndOffset(f.t, topic)
@@ -131,9 +132,14 @@ func (f *floor) caughtUp(groups map[string]string) {
 		_, view = f.call(http.MethodGet, f.mfc+"/subsystems", nil, "")
 		amr, asrs := subsystem(view, "AMR_FLEET", "AMR1"), subsystem(view, "ASRS", "ASRS1")
 		published := kafkatest.EndOffset(f.t, "warehouse.asrs-control.events") > f.asrsStart
-		return !behind && amr["status"] == "AVAILABLE" && amr["units_total"] == 3.0 && amr["units_available"] == 3.0 &&
-			(asrs["status"] == "AVAILABLE" || asrs["status"] == "DEGRADED") && published
-	}, func() any { return fmt.Sprintf("committed/end offsets %v; GET /subsystems %v", lag, view) })
+		// carry (Task 26 review): the committed offsets reaching the end do not open the P4-R20 gate at once (it
+		// polls), and a POST before it opens is 503: wait for /readyz ready too.
+		readyz, _ = f.call(http.MethodGet, f.mfc+"/readyz", nil, "")
+		return !behind && readyz == http.StatusOK && amr["status"] == "AVAILABLE" && amr["units_total"] == 3.0 &&
+			amr["units_available"] == 3.0 && (asrs["status"] == "AVAILABLE" || asrs["status"] == "DEGRADED") && published
+	}, func() any {
+		return fmt.Sprintf("committed/end offsets %v; GET /readyz %d; GET /subsystems %v", lag, readyz, view)
+	})
 }
 
 func subsystem(view map[string]any, kind, id string) map[string]any {
