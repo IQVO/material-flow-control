@@ -71,8 +71,13 @@ func TestCancellingAMoveFromAnOutputPortIsNotCancellable(t *testing.T) {
 	if _, err := o.Admitted(t0); err != nil {
 		t.Fatal(err)
 	}
-	_ = e.orders.Insert(ctx, o)
-	_ = memory.NewRequests(e.store).Insert(ctx, tr.Accept(req, "to-p", t0))
+	// carry (Task 9 review): a failed seed insert fails the test instead of passing on an empty store.
+	if err := e.orders.Insert(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	if err := memory.NewRequests(e.store).Insert(ctx, tr.Accept(req, "to-p", t0)); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := e.svc.CancelTransport(ctx, "rq-p"); !errors.Is(err, usecases.ErrNotCancellable) {
 		t.Fatalf("cancel with the container on OUT1 = %v, want ErrNotCancellable", err)
 	}
