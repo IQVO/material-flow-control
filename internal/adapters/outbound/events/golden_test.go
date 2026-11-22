@@ -63,13 +63,18 @@ func want(t *testing.T, s string) map[string]any {
 	return m
 }
 
-func TestEverySevenFactIsEncodedOnBothTopicsWithItsExactPayload(t *testing.T) {
-	cases := []struct {
-		ev      any
-		typ     string
-		subject string
-		data    string
-	}{
+// goldenCase is one published fact and its exact encoding.
+type goldenCase struct {
+	ev      any
+	typ     string
+	subject string
+	data    string
+}
+
+// goldenCases are the brief's cases of TestEverySevenFactIsEncodedOnBothTopicsWithItsExactPayload, moved to a
+// function so the AsyncAPI example test reads the same cases (carry, Task 17 review); the cases are unchanged.
+func goldenCases() []goldenCase {
+	return []goldenCase{
 		{tr.TransportRejected{RequestID: "task-1.1", ContainerID: "TOTE-1", Source: "WH1-AUTO-ASRS-ASRS1-00-00-S", Destination: "ST1",
 			Purpose: tr.PurposePick, Reason: tr.ReasonContainerBusy, Detail: "the container has an active transport order", At: t0},
 			"com.warehouse.wes.material-flow-control.transportrequest.TransportRejected", "task-1.1",
@@ -113,7 +118,10 @@ func TestEverySevenFactIsEncodedOnBothTopicsWithItsExactPayload(t *testing.T) {
 			`{"subsystem_kind":"STATION","subsystem_id":"ST1","status":"DEGRADED","units_total":2,"units_available":0,"open_work":3,
 			  "capacity_per_hour":0,"buffer_limit":2,"occupied":2,"queue_depth":1,"measured_at":"2026-11-20T08:00:00Z"}`},
 	}
-	for _, c := range cases {
+}
+
+func TestEverySevenFactIsEncodedOnBothTopicsWithItsExactPayload(t *testing.T) {
+	for _, c := range goldenCases() {
 		out := &rows{}
 		if err := events.NewSink(out, ids()).Append(context.Background(), c.ev); err != nil {
 			t.Fatalf("%T: %v", c.ev, err)
