@@ -36,7 +36,7 @@ once (`202` or `422`); its progress is reported only through events on `warehous
 
 Base path: the Service `material-flow-control` on :8080 (in-cluster
 `http://material-flow-control.warehouse-systems.svc.cluster.local`), through Kong at
-`/api/material-flow-control`. Every POST requires `Idempotency-Key` (1-128 chars); a replayed answer carries
+`/api/material-flow-control`. Every POST requires `Idempotency-Key` (1-128 printable ASCII characters); a replayed answer carries
 `Idempotency-Replayed: true`. Bodies snake_case; errors RFC 9457 `application/problem+json` with a stable
 `code`. No authentication. Location vocabulary: the AS/RS is addressed by its logical `LocationCode`
 (`WH1-AUTO-ASRS-ASRS1-00-00-S`, plan 05a D14); a goods-to-person station by its station id (`ST1`) or its
@@ -50,7 +50,7 @@ another request is `409 transport-request-conflict`; a rejected id stays rejecte
 
 **Replay classes** (every problem type declares one): FINAL — a function of the request alone, stored and
 replayed (`bad-request`, `invalid-parameter`, `transport-request-conflict`, `station-not-found`,
-`unknown-location`, `idempotency-key-required`, `idempotency-key-reused`); OUTCOME — the four rejections
+`unknown-location`, `idempotency-key-required`, `idempotency-key-invalid`, `idempotency-key-reused`); OUTCOME — the four rejections
 (`unknown-container`, `container-busy`, `destination-unreachable`, `subsystem-unavailable`): the rejection
 record and `TransportRejected` commit WITH
 the stored answer, and a replay creates nothing; RETRYABLE — the key is released, so a retry under the same key
