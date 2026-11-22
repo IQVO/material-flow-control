@@ -30,7 +30,24 @@ Common: `idempotency-key-required` 400 F, `idempotency-key-invalid` 400 F (not 1
 
 Facts back on `warehouse.material-flow-control.events` (data fields; `*_at` this context's clock): TransportAccepted (`transport_order_id`, `transport_request_id`, `container_id`, `source`, `destination`, `purpose`, `priority`, `due_by`, `legs_planned`, `accepted_at`); TransportRejected (`transport_request_id`, `container_id`, `source`, `destination`, `purpose`, `reason`, `detail`, `rejected_at`); ContainerArrivedAtStation (`transport_order_id`, `transport_request_id`, `container_id`, `station_id`, `purpose`, `priority`, `due_by`, `queue_position`, `arrived_at`); TransportCompleted (`transport_order_id`, `transport_request_id`, `container_id`, `destination`, `purpose`, `completed_at`); TransportFailed (`transport_order_id`, `transport_request_id`, `container_id`, `purpose`, `reason`, `subsystem_reason`?, `container_location`?, `failed_at`); ContainerSentToClarification (`container_id`, `transport_order_id`?, `transport_request_id`?, `reason` ∈ `NO_READ`, `MISMATCH`, `CONTAINER_NOT_AT_SOURCE`, `CONTAINER_NOT_AT_PORT`, `STORAGE_MAP_MISMATCH`, `CONTAINER_ON_FAILED_ROBOT`, `scanned_container_id`?, `detected_at_location`, `clarification_point`? (set when the container is moved there), `sent_at`); SubsystemCapacityChanged (`subsystem_kind`, `subsystem_id`, `status`, `units_total`, `units_available`, `open_work`, `capacity_per_hour`, `buffer_limit`, `occupied`, `queue_depth`, `measured_at`).
 
-Rules for the caller (plan 05b): send `transport_request_id` derived from the task id AND the attempt (a rejected id stays rejected, D7); treat `422` as final for that id; never poll — drive the task from `TransportAccepted`, `ContainerArrivedAtStation`, `TransportCompleted`, `TransportFailed`; dispatch on the full CloudEvents `type`, dedupe on `id`; for `RETURN` write no stock transaction (seam decision 4).
+Rules for the caller (plan 05b): mint a NEW `transport_request_id` for every attempt, derived from the task id AND an attempt counter (a rejected id stays rejected, D7, ruling P4-R21); treat `422` as final for that id and never retry a rejected id; never poll — drive the task from `TransportAccepted`, `ContainerArrivedAtStation`, `TransportCompleted`, `TransportFailed`; dispatch on the full CloudEvents `type`, dedupe on `id`; for `RETURN` write no stock transaction (seam decision 4).
+
+## Why every rejection is OUTCOME, `SUBSYSTEM_UNAVAILABLE` and `UNKNOWN_CONTAINER` included (ruling P4-R21)
+
+Two of the four rejections depend on state that can change by a retry: `SUBSYSTEM_UNAVAILABLE` (a subsystem on the
+route reads `UNAVAILABLE`) and `UNKNOWN_CONTAINER` (no `ContainerStored` fact or track for the container yet). They
+still stay OUTCOME, not RETRYABLE: the `REJECTED` record commits and `TransportRejected` is published with the stored
+answer, and a `transport_request_id` has exactly ONE outcome (responsibility 6). Releasing the key would let a retry
+of the same id accept after a `TransportRejected` for it was already published, so the WES would see two outcomes for
+one request. Instead:
+
+- the caller (fulfillment-execution, plan 05b) mints a NEW `transport_request_id` per attempt (task id + attempt
+  counter) and sends it under a NEW `Idempotency-Key`; it never retries a rejected id, and a retry of the same id
+  (a lost answer, a timeout) replays the same `422`;
+- the window in which these two rejections would be decided on stale state at boot is closed by ruling P4-R20: until
+  both subsystem consumers have replayed the backlog sampled at boot, every POST answers `503`
+  `dependency-unavailable` (RETRYABLE, key released) and `/readyz` is not ready, so a request is never rejected on
+  the facts of a previous run.
 
 The replay classes, the stored-answer rules and the corner cases (a released key, in-flight duplicates) are on the
 [Replay classes](/docs/development/replay-classes) page.

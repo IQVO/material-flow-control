@@ -28,6 +28,12 @@ refused at once, a `…/cancellation` sub-resource, every POST idempotent).
    `ContainerStored` fact or an acceptance creates a track, so either target can exist by the retry: a FINAL 404
    would pin a cancellation that raced ahead of its request (or was retried after a request timeout) for 24 h
    while the transport runs to completion.
+   Amended (ruling P4-R21): all four rejections stay OUTCOME, `SUBSYSTEM_UNAVAILABLE` and `UNKNOWN_CONTAINER`
+   included, although both depend on state a retry can change. The rejection is also the published fact
+   `TransportRejected`, and a `transport_request_id` has exactly one outcome: a released key would let a retry of the
+   same id accept after its rejection was published. The caller mints a NEW `transport_request_id` per attempt
+   (task id + attempt counter) and never retries a rejected id; ruling P4-R20 (no POST decided before the subsystem
+   backlog sampled at boot is replayed) keeps these rejections from being decided on a previous run's facts.
 4. Cancellation `POST /transport-requests/{id}/cancellation`: `200` cancelled now, `202` asked of the subsystem,
    `409 transport-not-cancellable` (on a robot, or waiting on an AS/RS output port), `409 transport-ended`.
 5. Read routes (`GET` request, track, station, subsystems) exist for operators and agents, never for polling. No
@@ -35,7 +41,9 @@ refused at once, a `…/cancellation` sub-resource, every POST idempotent).
 
 ## Consequences
 
-- plan 05b's adapter treats `422` as final for that id and sends a new id (task id + attempt) to try again.
+- plan 05b's adapter treats `422` as final for that id and sends a new id (task id + attempt) to try again: it mints
+  a NEW `transport_request_id` (and a new `Idempotency-Key`) for every attempt and never retries a rejected id, also
+  after `SUBSYSTEM_UNAVAILABLE` or `UNKNOWN_CONTAINER` (ruling P4-R21).
 - A rejection is both an answer and a fact: the WES may act on either, and both say the same thing.
 - Lock order (Task 13 review): the Idempotency middleware's unit of work is the outermost one; the use case takes
   the flow lock first and the key row is written only after the handler returned (a FINAL refusal's row on its

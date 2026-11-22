@@ -71,6 +71,18 @@ target can exist by the retry: a FINAL 404 would pin a cancellation that raced a
 after a request timeout) for 24 hours while the transport runs to completion. Refuse under key K, create the target,
 retry K: the retry executes (`202` or `200`), it is not a replay.
 
+### Why `subsystem-unavailable` and `unknown-container` stay OUTCOME (ruling P4-R21)
+
+Both rejections depend on state a retry can change (a subsystem back to `AVAILABLE`, the container's first
+`ContainerStored` fact), which would make them RETRYABLE under the fleet's refuse-create-retry test. They stay
+OUTCOME because the rejection is also a published fact: the `REJECTED` record and `TransportRejected` commit with the
+stored answer, and one `transport_request_id` has exactly one outcome. A released key would let a retry of the same id
+accept after its `TransportRejected` went out. The caller therefore mints a NEW `transport_request_id` (task id +
+attempt counter) and a new `Idempotency-Key` for every attempt and never retries a rejected id
+([Relationship 1](/docs/ecosystem/relationship-1-rest)). A rejection decided on stale facts at boot cannot happen:
+until the subsystem backlog sampled at boot is replayed, every POST answers `503 dependency-unavailable`
+(ruling P4-R20).
+
 ## Corner cases
 
 - **The fingerprint** is the method, the escaped path and the raw body. The same key on another route or with another
