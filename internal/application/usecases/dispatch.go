@@ -168,7 +168,7 @@ func (s *Service) refused(f *flow, c command.Command, o *transportorder.Order, r
 	switch c.Kind {
 	case command.RequestLeg:
 		s.d.Log.ErrorContext(f.ctx, "a subsystem refused a leg for good: the layout and the subsystem disagree",
-			"order", o.ID(), "leg", c.LegRef, "code", r.Code, "status", r.Status)
+			"order", sanitizeLog(o.ID()), "leg", sanitizeLog(c.LegRef), "code", sanitizeLog(r.Code), "status", r.Status)
 		if err := f.fail(o, transportorder.FailSubsystemFault, r.Code); err != nil {
 			return c, err
 		}
@@ -177,7 +177,7 @@ func (s *Service) refused(f *flow, c command.Command, o *transportorder.Order, r
 			o.CancelRefused(f.now)
 		}
 	default:
-		s.d.Log.ErrorContext(f.ctx, "asrs-control refused a pickup confirmation", "order", o.ID(), "leg", c.LegRef, "code", r.Code)
+		s.d.Log.ErrorContext(f.ctx, "asrs-control refused a pickup confirmation", "order", sanitizeLog(o.ID()), "leg", sanitizeLog(c.LegRef), "code", sanitizeLog(r.Code))
 	}
 	return c.Failed(f.now, r.Error()), nil
 }
@@ -196,7 +196,7 @@ func (s *Service) retryOrGiveUp(f *flow, c command.Command, o *transportorder.Or
 			o.CancelRefused(f.now)
 		}
 	default:
-		s.d.Log.ErrorContext(f.ctx, "a pickup confirmation expired: the AS/RS port may stay blocked", "order", o.ID(), "leg", c.LegRef, "error", errText)
+		s.d.Log.ErrorContext(f.ctx, "a pickup confirmation expired: the AS/RS port may stay blocked", "order", sanitizeLog(o.ID()), "leg", sanitizeLog(c.LegRef), "error", sanitizeLog(errText))
 	}
 	return c.Failed(f.now, errText), nil
 }
