@@ -20,6 +20,7 @@ const (
 	transportsEndedName = "material_flow_control.transports.ended"
 	outboxBacklogName   = "material_flow_control.outbox.backlog"
 	outboxLagName       = "material_flow_control.outbox.lag"
+	retentionPurgedName = "material_flow_control.retention.purged"
 )
 
 // outboxReadTimeout bounds one backlog query of a metric collection.
@@ -29,16 +30,17 @@ const outboxReadTimeout = 2 * time.Second
 // (postgres.OutboxRepo.Backlog).
 type OutboxBacklogReader func(ctx context.Context) (rows int64, oldest time.Duration, err error)
 
-// TransportMetrics is the Tier 2 instrument set: the transports-ended counter and the outbox
-// backlog gauges. A nil *TransportMetrics records nothing.
+// TransportMetrics is the Tier 2 instrument set: the transports-ended counter, the retention purged-rows counter
+// and the outbox backlog gauges. A nil *TransportMetrics records nothing.
 type TransportMetrics struct {
-	meter metric.Meter
-	ended metric.Int64Counter
+	meter  metric.Meter
+	ended  metric.Int64Counter
+	purged metric.Int64Counter
 }
 
 var _ ports.TransportMetrics = (*TransportMetrics)(nil)
 
-// NewTransportMetrics registers the counter on the global meter provider (installed by Setup; a no-op without it).
+// NewTransportMetrics registers the counters on the global meter provider (installed by Setup; a no-op without it).
 func NewTransportMetrics() (*TransportMetrics, error) {
 	meter := otel.Meter(meterName)
 	c, err := meter.Int64Counter(transportsEndedName, metric.WithUnit("{transport}"),
@@ -46,7 +48,12 @@ func NewTransportMetrics() (*TransportMetrics, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &TransportMetrics{meter: meter, ended: c}, nil
+	p, err := meter.Int64Counter(retentionPurgedName, metric.WithUnit("{row}"),
+		metric.WithDescription("Rows the retention purges deleted, by table (ADR 0008)"))
+	if err != nil {
+		return nil, err
+	}
+	return &TransportMetrics{meter: meter, ended: c, purged: p}, nil
 }
 
 // TransportEnded counts one ending; took is the accepted-to-ended duration (kept for a later histogram).
@@ -85,4 +92,13 @@ func (m *TransportMetrics) ObserveOutbox(read OutboxBacklogReader) (metric.Regis
 		o.ObserveFloat64(lag, oldest.Seconds())
 		return nil
 	}, backlog, lag)
+}
+
+// RowsPurged counts the rows one retention pass deleted from table (ADR 0008); a pass that deleted nothing still adds
+// 0, so every table's series exists from the first pass.
+func (m *TransportMetrics) RowsPurged(ctx context.Context, table string, n int64) {
+	if m == nil {
+		return
+	}
+	m.purged.Add(ctx, n, metric.WithAttributes(attribute.String("table", table)))
 }

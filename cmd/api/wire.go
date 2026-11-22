@@ -7,6 +7,8 @@ import (
 	nethttp "net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	mfchttp "github.com/IQVO/material-flow-control/internal/adapters/inbound/http"
 	"github.com/IQVO/material-flow-control/internal/adapters/inbound/kafka"
 	"github.com/IQVO/material-flow-control/internal/adapters/outbound/amr"
@@ -70,8 +72,9 @@ func wire(ctx context.Context, cfg config, log *slog.Logger) (*app, error) {
 		caughtUp:  catchUp.Err,
 		consumers: stoppables(newConsumers(cfg, svc, log)),
 		closers:   []func(){func() { _ = sink.Close() }, pool.Close},
-		purgers: []purger{{"idempotency_keys", postgres.NewIdempotencyStore(pool), mfchttp.IdempotencyWindow},
-			{"processed_events", postgres.NewProcessedEvents(pool), inboxRetention}}}
+		purgers: append([]purger{{"idempotency_keys", postgres.NewIdempotencyStore(pool), mfchttp.IdempotencyWindow},
+			{"processed_events", postgres.NewProcessedEvents(pool), inboxRetention}}, retentionPurgers(pool, cfg)...),
+		purged: metrics}
 	a.loops = []func(context.Context){catchUp.Run, a.dispatch, a.tick, a.purge, func(ctx context.Context) { _ = relay.Run(ctx) }}
 	return a, nil
 }
@@ -99,4 +102,20 @@ type purger struct {
 		Purge(ctx context.Context, before time.Time) (int64, error)
 	}
 	keep time.Duration
+}
+
+// retentionPurgers are the retention policies of ADR 0008 (issue #3), orders first: an order's purge frees its
+// commands and moves for the policies after it. The moves policy keeps what a track view shows (HistoryLimit).
+func retentionPurgers(pool *pgxpool.Pool, cfg config) []purger {
+	r := cfg.Retention
+	out := []purger{}
+	for _, p := range []struct {
+		store *postgres.Retention
+		keep  time.Duration
+	}{{postgres.NewOrderRetention(pool, r.Batch), r.Orders}, {postgres.NewRejectedRequestRetention(pool, r.Batch), r.Orders},
+		{postgres.NewContainerMoveRetention(pool, r.Batch, cfg.UseCases.HistoryLimit), r.Moves},
+		{postgres.NewCommandRetention(pool, r.Batch), r.Commands}, {postgres.NewOutboxRetention(pool, r.Batch), r.Outbox}} {
+		out = append(out, purger{p.store.Table(), p.store, p.keep})
+	}
+	return out
 }
