@@ -56,6 +56,8 @@ var problemCatalogue = []struct {
 	{usecases.ErrTrackNotFound, problem{http.StatusNotFound, "container-track-not-found", "Container track not found", classRetryable}},
 	{usecases.ErrStationNotFound, problem{http.StatusNotFound, "station-not-found", "Station not found", classFinal}},
 	{usecases.ErrUnknownLocation, problem{http.StatusUnprocessableEntity, "unknown-location", "The location is not a place of this automation", classFinal}},
+	// ruling P4-R22: FINAL — the record outlives its purged order, so the id never becomes new again.
+	{usecases.ErrTransportExpired, problem{http.StatusGone, "transport-request-expired", "Transport request expired", classFinal}},
 	{usecases.ErrTransportEnded, problem{http.StatusConflict, "transport-ended", "The transport has ended", classRetryable}},
 	{usecases.ErrNotCancellable, problem{http.StatusConflict, "transport-not-cancellable", "The container is on a robot or waiting on an AS/RS output port", classRetryable}},
 	{usecases.ErrNotInClarification, problem{http.StatusConflict, "not-in-clarification", "The container is not in clarification", classRetryable}},

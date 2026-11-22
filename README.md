@@ -61,7 +61,8 @@ Malformed and exhausted messages go to `<topic>.dlq`. The consumed producer cont
 `config/flow-layout.example.yaml`). Optional: `MIGRATIONS_DATABASE_URL`, `ADDR`, `LOG_LEVEL`,
 `MFC_ASRS_CONSUMER_GROUP`, `MFC_AMR_CONSUMER_GROUP`, `OUTBOX_INTERVAL_MS`, `OUTBOX_BATCH`, `OUTBOX_MAX_ATTEMPTS`,
 `SUBSYSTEM_TIMEOUT_MS`, `DISPATCH_POLL_MS`, `TICK_INTERVAL_MS`, `LEG_RETRY_LIMIT`, `LEG_REQUEST_DEADLINE_SECONDS`,
-`LEG_TIMEOUT_SECONDS`, `OTEL_SERVICE_NAME`, `SERVICE_VERSION`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `ENVIRONMENT`.
+`LEG_TIMEOUT_SECONDS`, `ORDER_RETENTION_HOURS`, `CONTAINER_MOVE_RETENTION_HOURS`, `COMMAND_RETENTION_HOURS`,
+`OUTBOX_RETENTION_HOURS`, `PURGE_BATCH`, `OTEL_SERVICE_NAME`, `SERVICE_VERSION`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `ENVIRONMENT`.
 `cmd/mcp` needs `DATABASE_URL` and `MFC_LAYOUT_FILE` (`MCP_ADDR`); `cmd/a2a` also `A2A_AGENT_URL` (`A2A_ADDR`). A
 missing or invalid variable is a boot error: one JSON line naming it, exit code 1. Defaults and meanings:
 `docs/docs/operations/configuration.md`.
@@ -85,9 +86,9 @@ requires `Idempotency-Key`; errors are `application/problem+json` with a `code`;
 
 | Method and path | Success | Refusals |
 | --- | --- | --- |
-| `POST /transport-requests` | `202` `TransportOrder` | `400` `bad-request` / `invalid-parameter`, `409` `transport-request-conflict`, `422` `unknown-container` / `container-busy` / `destination-unreachable` / `subsystem-unavailable` |
-| `GET /transport-requests/{transportRequestId}` | `200` `TransportOrder` | `400` `invalid-parameter`, `404` `transport-request-not-found` |
-| `POST /transport-requests/{transportRequestId}/cancellation` | `200` cancelled, `202` asked of the subsystem | `404` `transport-request-not-found`, `409` `transport-not-cancellable` / `transport-ended` |
+| `POST /transport-requests` | `202` `TransportOrder` | `400` `bad-request` / `invalid-parameter`, `409` `transport-request-conflict`, `410` `transport-request-expired`, `422` `unknown-container` / `container-busy` / `destination-unreachable` / `subsystem-unavailable` |
+| `GET /transport-requests/{transportRequestId}` | `200` `TransportOrder` | `400` `invalid-parameter`, `404` `transport-request-not-found`, `410` `transport-request-expired` |
+| `POST /transport-requests/{transportRequestId}/cancellation` | `200` cancelled, `202` asked of the subsystem | `404` `transport-request-not-found`, `410` `transport-request-expired`, `409` `transport-not-cancellable` / `transport-ended` |
 | `GET /container-tracks/{containerId}` | `200` `ContainerTrack` | `400` `invalid-parameter`, `404` `container-track-not-found` |
 | `POST /container-tracks/{containerId}/clarification-resolution` | `200` `ContainerTrack` | `400` `bad-request`, `404` `container-track-not-found`, `409` `not-in-clarification`, `422` `unknown-location` |
 | `GET /stations/{stationId}` | `200` `StationQueue` | `400` `invalid-parameter`, `404` `station-not-found` |

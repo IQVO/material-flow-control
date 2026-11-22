@@ -34,6 +34,9 @@ refused at once, a `…/cancellation` sub-resource, every POST idempotent).
    same id accept after its rejection was published. The caller mints a NEW `transport_request_id` per attempt
    (task id + attempt counter) and never retries a rejected id; ruling P4-R20 (no POST decided before the subsystem
    backlog sampled at boot is replayed) keeps these rejections from being decided on a previous run's facts.
+   Note (ruling P4-R22, [ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)): P4-R21 has no time bound. The
+   retention never deletes a request record, so a rejected id answers its `422` forever, and an accepted id whose
+   ended order was purged answers `410 transport-request-expired` (FINAL) on a read, a retry and a cancellation.
 4. Cancellation `POST /transport-requests/{id}/cancellation`: `200` cancelled now, `202` asked of the subsystem,
    `409 transport-not-cancellable` (on a robot, or waiting on an AS/RS output port), `409 transport-ended`.
 5. Read routes (`GET` request, track, station, subsystems) exist for operators and agents, never for polling. No

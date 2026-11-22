@@ -72,7 +72,8 @@ var agentAllowedSelectors = map[string][]string{
 	"ports": {},
 	"usecases": {"NewReader", "ReadDeps", "Reader", "DefaultConfig", "Config", "TransportView", "TrackView",
 		"ErrRequestNotFound", "ErrTrackNotFound", "ErrStationNotFound", "ErrInvalidRequest",
-		"ErrAsrsNotFound"}, // carry (Task 20 review): the read-only AS/RS lookup refusal
+		"ErrAsrsNotFound",      // carry (Task 20 review): the read-only AS/RS lookup refusal
+		"ErrTransportExpired"}, // ruling P4-R22: the read of a request whose order the retention purged
 	// ruling P4-R17: the read pool is NewReadOnlyPool (every transaction READ ONLY); NewPool is cmd/api's.
 	"postgres": {"MigrationsURL", "RunMigrations", "NewReadOnlyPool", "NewRequests", "NewOrders", "NewTracks",
 		"NewStations", "NewCapacities", "NewUnits"},

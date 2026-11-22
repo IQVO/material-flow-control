@@ -31,6 +31,7 @@ and every problem type declares one replay class in `internal/adapters/inbound/h
 | `transport-request-conflict` | 409 | FINAL | the `transport_request_id` was used with another request |
 | `unknown-location` | 422 | FINAL | a clarification resolution naming a place outside the layout |
 | `station-not-found` | 404 | FINAL | `GET /stations/{stationId}` (the layout decides it) |
+| `transport-request-expired` | 410 | FINAL | a `GET`, a retried `POST /transport-requests` or a cancellation of an ACCEPTED id whose ended order the retention purged ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables), ruling P4-R22): the record is kept, so the id never becomes new again and a retry never re-executes |
 | `unknown-container` | 422 | OUTCOME | rejection `UNKNOWN_CONTAINER` |
 | `container-busy` | 422 | OUTCOME | rejection `CONTAINER_BUSY` (an active transport, or held at clarification) |
 | `destination-unreachable` | 422 | OUTCOME | rejection `DESTINATION_UNREACHABLE` |
@@ -49,8 +50,8 @@ code also answers a POST.
 ## Codes only the agent surfaces answer
 
 The read-only MCP tools and A2A skills ([Agents](/docs/ecosystem/agents)) answer with the REST codes above wherever
-the outcome is shared (`transport-request-not-found`, `container-track-not-found`, `station-not-found`,
-`invalid-parameter`, `internal-error`). Four codes exist only there; they are reads, so nothing is stored and no
+the outcome is shared (`transport-request-not-found`, `transport-request-expired`, `container-track-not-found`,
+`station-not-found`, `invalid-parameter`, `internal-error`). Four codes exist only there; they are reads, so nothing is stored and no
 replay class applies:
 
 | Code | Status | Surface | Raised by |

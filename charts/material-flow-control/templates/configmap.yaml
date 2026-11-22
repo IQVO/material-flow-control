@@ -24,6 +24,11 @@ data:
   LEG_TIMEOUT_SECONDS: {{ .Values.config.legTimeoutSeconds | quote }}
   DISPATCH_POLL_MS: {{ .Values.config.dispatchPollMs | quote }}
   TICK_INTERVAL_MS: {{ .Values.config.tickIntervalMs | quote }}
+  ORDER_RETENTION_HOURS: {{ .Values.config.orderRetentionHours | quote }}
+  CONTAINER_MOVE_RETENTION_HOURS: {{ .Values.config.containerMoveRetentionHours | quote }}
+  COMMAND_RETENTION_HOURS: {{ .Values.config.commandRetentionHours | quote }}
+  OUTBOX_RETENTION_HOURS: {{ .Values.config.outboxRetentionHours | quote }}
+  PURGE_BATCH: {{ .Values.config.purgeBatch | quote }}
   OTEL_SERVICE_NAME: "material-flow-control"
   SERVICE_VERSION: {{ include "material-flow-control.serviceVersion" . | quote }}
   ENVIRONMENT: {{ .Values.environment | quote }}

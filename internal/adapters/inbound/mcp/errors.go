@@ -17,6 +17,7 @@ var errorCatalogue = []struct {
 	slug   string
 }{
 	{usecases.ErrRequestNotFound, "transport-request-not-found"},
+	{usecases.ErrTransportExpired, "transport-request-expired"}, // ruling P4-R22
 	{usecases.ErrTrackNotFound, "container-track-not-found"},
 	{usecases.ErrStationNotFound, "station-not-found"},
 	{usecases.ErrAsrsNotFound, "asrs-not-found"}, // carry (Task 20 review); asrs-control's slug for the same outcome

@@ -57,7 +57,8 @@ func (d Deps) registerTools(server *mcp.Server) {
 	addTool(server, &mcp.Tool{Name: "get_transport",
 		Description: "Read one transport request: status (IN_PROGRESS, CANCEL_REQUESTED, COMPLETED, FAILED, REJECTED), reason, " +
 			"the container's last confirmed location, and every leg with its subsystem, kind (RETRIEVE, MOVE, STORE), status, " +
-			"the subsystem's job or leg id and the robot. Read-only; an unknown id fails with transport-request-not-found.",
+			"the subsystem's job or leg id and the robot. Read-only; an unknown id fails with transport-request-not-found, " +
+			"an id whose ended order the retention purged with transport-request-expired.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
 		Meta:        authorityMeta(authorityL1)}, d.getTransport)
 	addTool(server, &mcp.Tool{Name: "get_container_track",

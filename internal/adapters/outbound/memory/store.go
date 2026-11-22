@@ -166,3 +166,22 @@ func (u *UnitOfWork) AfterCommit(ctx context.Context, fn func()) {
 	}
 	fn()
 }
+
+// PurgeOrder is the order retention's effect on this store (ADR 0008): the order and its leg references go, its
+// request record stays (ruling P4-R22: the record is the tombstone a retried transport_request_id is answered from).
+func (s *Store) PurgeOrder(id string) {
+	s.with(func(t *tables) {
+		delete(t.orders, id)
+		for ref, order := range t.refs {
+			if order == id {
+				delete(t.refs, ref)
+			}
+		}
+		for i, o := range t.orderIDs {
+			if o == id {
+				t.orderIDs = append(t.orderIDs[:i:i], t.orderIDs[i+1:]...)
+				break
+			}
+		}
+	})
+}

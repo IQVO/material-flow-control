@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"net"
 	nethttp "net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -31,6 +33,10 @@ type app struct {
 	loops     []func(context.Context)
 	closers   []func()
 	purgers   []purger
+	// purged counts each purge pass's rows by table (material_flow_control.retention.purged, ADR 0008).
+	purged interface {
+		RowsPurged(ctx context.Context, table string, n int64)
+	}
 	// caughtUp is nil once the subsystem facts published before boot are applied (ruling P4-R20); nil = no gate.
 	caughtUp func() error
 }
@@ -177,23 +183,53 @@ func (a *app) tickLoop(ctx context.Context, tick func(context.Context) (int, err
 	}
 }
 
-// purge drops idempotency answers older than the window and inbox rows older than inboxRetention, hourly.
+// purge runs purgeOnce at boot and then hourly, until ctx ends.
 func (a *app) purge(ctx context.Context) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
-		now := time.Now().UTC()
-		for _, p := range a.purgers {
-			if n, err := p.store.Purge(ctx, now.Add(-p.keep)); err != nil {
-				a.log.WarnContext(ctx, "purge failed", "table", p.name, "error", err)
-			} else if n > 0 {
-				a.log.InfoContext(ctx, "purged", "table", p.name, "rows", n)
-			}
-		}
+		a.purgeOnce(ctx)
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 		}
 	}
+}
+
+// purgeOnce drops idempotency answers older than the window, inbox rows older than inboxRetention and the terminal
+// rows of the retention policies (ADR 0008) older than their windows; every table's pass is counted.
+func (a *app) purgeOnce(ctx context.Context) {
+	now := time.Now().UTC()
+	for _, p := range a.purgers {
+		counts, err := purgeTables(ctx, p, now.Add(-p.keep))
+		if err != nil {
+			a.log.WarnContext(ctx, "purge failed", "table", p.name, "error", err)
+			continue
+		}
+		for _, table := range slices.Sorted(maps.Keys(counts)) {
+			n := counts[table]
+			if a.purged != nil {
+				a.purged.RowsPurged(ctx, table, n)
+			}
+			if n > 0 {
+				a.log.InfoContext(ctx, "purged", "table", table, "rows", n)
+			}
+		}
+	}
+}
+
+// tablesPurger is a store whose purge deletes from several tables and counts each (the order retention: orders and
+// their legs). carry (retention review): the counter records every table a purge deleted from.
+type tablesPurger interface {
+	PurgeTables(ctx context.Context, before time.Time) (map[string]int64, error)
+}
+
+// purgeTables runs one pass of p's store, counted by table; a single-table store's rows count under p.name.
+func purgeTables(ctx context.Context, p purger, before time.Time) (map[string]int64, error) {
+	if tp, ok := p.store.(tablesPurger); ok {
+		return tp.PurgeTables(ctx, before)
+	}
+	n, err := p.store.Purge(ctx, before)
+	return map[string]int64{p.name: n}, err
 }

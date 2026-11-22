@@ -2,7 +2,7 @@
 id: runbook
 title: "Runbook"
 sidebar_label: "Runbook"
-description: "Boot and shutdown order, the probes, dead-letter topics and their replay, stuck subsystem commands, clarification and leg timeouts."
+description: "Boot and shutdown order, the probes, dead-letter topics and their replay, stuck subsystem commands, clarification, leg timeouts and table retention."
 ---
 
 # Runbook
@@ -105,3 +105,43 @@ means it was already resolved; `422 unknown-location` names a place outside the 
 moves the container's track (the track follows physical facts) but never reopens the order. A leg that timed out
 with the container on a robot holds the container `CONTAINER_ON_FAILED_ROBOT` (ruling P4-R9). Check the subsystem
 first: its consumer lag and its own logs for the leg reference `<orderId>.<seq>.<attempt>`.
+
+## Table retention
+
+The hourly purge of `cmd/api` keeps the operational tables bounded
+([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)). It deletes only terminal rows older than their
+window, in batches of `PURGE_BATCH` rows (one transaction each, repeated until the table is done):
+
+| Table | Purged | Window |
+| --- | --- | --- |
+| `transport_orders` (+ `transport_legs`) | `COMPLETED`/`FAILED` orders no pending command, container track or station queue still references | `ORDER_RETENTION_HOURS` (720) |
+| `container_moves` | moves beyond each container's latest 20, unless a live order moves the container | `CONTAINER_MOVE_RETENTION_HOURS` (720) |
+| `subsystem_commands` | `DONE`/`FAILED` commands of ended orders | `COMMAND_RETENTION_HOURS` (720) |
+| `outbox_events` | published rows | `OUTBOX_RETENTION_HOURS` (168) |
+| `idempotency_keys`, `processed_events` | every row | 24 hours, 30 days (fixed) |
+
+`material_flow_control.retention.purged{table}` counts the deleted rows; `purge failed` (WARN, `table`) names a pass
+that failed (the next hour retries it). `transport_requests` is never purged (ruling P4-R22): after the window the
+order is gone but its record stays, so `GET /transport-requests/{id}`, a retried POST and a cancellation answer
+`410 transport-request-expired`, and the id is never accepted again. To find what the next pass will delete:
+
+```sql
+SELECT count(*) FROM transport_orders WHERE status IN ('COMPLETED', 'FAILED') AND updated_at < now() - interval '720 hours';
+SELECT count(*) FROM outbox_events WHERE published_at < now() - interval '168 hours';
+```
+
+Migration `0002_retention_indexes` runs at the first boot of the release that brings the retention (every binary
+runs the embedded migrations at boot). It changes four order id columns to `COLLATE "C"` and builds eight indexes in
+ONE transaction ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables), decision 5): until it commits,
+`transport_legs`, `subsystem_commands`, `container_tracks` and `transport_requests` are locked even for reads, and
+`transport_orders`, `container_moves` and `outbox_events` for writes. At 300k orders and 1M moves it took about 1 s;
+it grows with the tables, so check them first (`SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY 2
+DESC`). Its `ALTER TABLE` also waits for every open transaction on those tables, and new queries queue behind it:
+look for long-open sessions first (`SELECT pid, state, xact_start FROM pg_stat_activity WHERE xact_start < now() -
+interval '1 minute'`). On a database with many millions of moves, apply it before the rollout, in a quiet window,
+with the golang-migrate CLI (`migrate -path migrations -database "$MIGRATIONS_DATABASE_URL" up`), so the boot finds
+nothing to do inside its startup-probe budget (60 s).
+
+An attempt-capped outbox row is never purged: re-arm it (`UPDATE outbox_events SET attempts = 0 WHERE id = ...`) once
+the cause is fixed. An order a station still holds as occupant, or a container still in clarification, keeps its
+order until the hold or the slot is released.

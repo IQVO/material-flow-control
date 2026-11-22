@@ -13,7 +13,7 @@ configmap="$(render --show-only templates/configmap.yaml)"
 # ruling P4-R18: every binary also reads what the telemetry adapter reads itself (ENVIRONMENT).
 telemetry_vars="$(grep -ohE 'os\.Getenv\("[A-Z_]+"' "$repo_dir"/internal/adapters/outbound/telemetry/telemetry.go | grep -oE '"[A-Z_]+"' | tr -d '"')"
 grep -qx ENVIRONMENT <<<"$telemetry_vars" || fail "the telemetry adapter no longer reads ENVIRONMENT: update this test"
-read_vars="$( (grep -ohE 'r\.(must|str|num|dur|pos)\("[A-Z_]+"' "$repo_dir"/cmd/api/config.go | grep -oE '"[A-Z_]+"' | tr -d '"'; echo "$telemetry_vars") | sort -u)"
+read_vars="$( (grep -ohE 'r\.(must|str|num|dur|pos|hours)\("[A-Z_]+"' "$repo_dir"/cmd/api/config.go | grep -oE '"[A-Z_]+"' | tr -d '"'; echo "$telemetry_vars") | sort -u)"
 [ "$(wc -l <<<"$read_vars")" -ge 23 ] || fail "found only $(wc -l <<<"$read_vars") env names in cmd/api: extend the pattern, never lower the floor"
 rendered="$( (grep -oE '^  [A-Z_]+:' <<<"$configmap" | tr -d ' :'; grep -oE 'name: [A-Z_]+$' <<<"$deployment" | awk '{print $2}') | sort -u)"
 diff <(echo "$read_vars") <(echo "$rendered") || fail "the api env differs from what cmd/api reads (left: read, right: rendered)"
