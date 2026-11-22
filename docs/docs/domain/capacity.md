@@ -29,5 +29,13 @@ are meaningful only for `STATION` (0 elsewhere). Never sum `units_available` or 
 `units_available` is idle and assignable robots, an AS/RS `units_available` is units that are not `HELD` and may be
 busy. `GET /subsystems` lists the latest snapshots sorted by kind, then id.
 
+A station row appears in `GET /subsystems` from the layout alone — derived empty and `AVAILABLE`, before
+its first arrival — while a subsystem row (AMR_FLEET, ASRS) exists only after the first fact of that
+subsystem was applied. The read view is one row per layout entry (the openapi `listSubsystems`
+contract); a station's first `SubsystemCapacityChanged` is still published only when a flow first
+touches its queue (a station nobody delivered to has nothing to measure). No producer publishes a
+station fact: asrs-control's contract carries no station state (`EquipmentStateChanged` is an AS/RS
+aisle unit), so the station view is entirely this context's (layout + queue).
+
 The rejection `SUBSYSTEM_UNAVAILABLE` reads these snapshots: a subsystem on the route whose latest snapshot is
 `UNAVAILABLE` rejects the request.

@@ -384,7 +384,10 @@ func assertCapacityGatesAcceptanceAndMapsEveryFact(t *testing.T, e *env, fleet f
 		t.Fatalf("robots_total 0 must be accepted, open work = queued + active, measured_at = our clock (not changed_at): %+v", last)
 	}
 	e.must(e.svc.OnAsrsCapacityChanged(ctx, e.id(), typeAsrsCap, facts.AsrsCapacity{AsrsID: "ASRS1", UnitsTotal: 2, UnitsAvailable: 1, OpenJobs: 4}))
-	if subs, _ := e.svc.Subsystems(ctx); len(subs) != 2 || subs[0].Kind != capacity.KindAmrFleet || subs[1].CapacityPerHour != 60 {
+	// The measured rows plus the derived layout station (empty before its first arrival; no queue was
+	// touched by these capacity facts).
+	if subs, _ := e.svc.Subsystems(ctx); len(subs) != 3 || subs[0].Kind != capacity.KindAmrFleet || subs[1].CapacityPerHour != 60 ||
+		subs[2].Subject() != "STATION/ST1" || subs[2].BufferLimit != 2 || subs[2].Status != capacity.StatusAvailable {
 		t.Fatalf("subsystems = %+v", subs)
 	}
 	e.must(e.svc.OnEquipmentStateChanged(ctx, e.id(), typeUnit, facts.EquipmentState{AsrsID: "ASRS1", UnitID: "A1", Aisle: 1, State: "HELD", PreviousState: "IDLE"}))

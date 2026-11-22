@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/application/facts"
@@ -199,9 +200,31 @@ func (s *Service) Station(ctx context.Context, stationID string) (stationqueue.S
 	return snap, nil
 }
 
-// Subsystems lists every capacity snapshot by kind and id.
+// Subsystems lists every capacity snapshot by kind and id. A station is persisted only when a flow
+// first touches its queue (commit's saveAggregates), but the read contract is "one per layout entry"
+// (openapi listSubsystems): a station nobody delivered to yet is derived from the layout, empty and
+// AVAILABLE — the same derivation Station() makes for an untouched queue. Deploy verification
+// 2026-11-22: without this, STATION/ST1 was absent from GET /subsystems on a fresh floor.
 func (s *Service) Subsystems(ctx context.Context) ([]capacity.Snapshot, error) {
-	return s.d.Capacities.List(ctx)
+	list, err := s.d.Capacities.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	persisted := make(map[string]bool, len(list))
+	for _, snap := range list {
+		if snap.Kind == capacity.KindStation {
+			persisted[snap.ID] = true
+		}
+	}
+	for _, st := range s.l.Stations() {
+		if !persisted[st.StationID] {
+			list = append(list, capacity.Station(st.StationID, st.BufferLimit, 0, 0, s.now()))
+		}
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return string(list[i].Kind)+"/"+list[i].ID < string(list[j].Kind)+"/"+list[j].ID
+	})
+	return list, nil
 }
 
 // EquipmentUnits lists the last known state of an AS/RS's units. carry (Task 20 review): an AS/RS the layout does
