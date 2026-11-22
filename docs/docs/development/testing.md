@@ -14,7 +14,7 @@ description: "Unit tests, the eight BDD acceptance scenarios, integration tests 
 | Integration | `make integration` (`go test -tags integration ./...`) | the Postgres repositories, the flow lock and its timeouts, the Idempotency middleware over real Postgres, the consumers and the relay over real Kafka, `cmd/api` traces and outbox gauges, the end-to-end test against the released subsystems |
 | Fitness | `make arch-test` | the hexagonal import rules (arch-go) and the sensors in `internal/architecture` |
 | Coverage | `make coverage` | at least 90% of `./internal/domain/...` and `./internal/application/...` |
-| Mutation | `make mutation` | gremlins per package (efficacy and mutant coverage), thresholds measured before the first release |
+| Mutation | `make mutation`, `make mutation-full` | gremlins on `transportorder` and on every domain package (efficacy and mutant coverage both gated at 99) |
 
 `make check-fast` (format, vet, fitness tests and the tests of the changed packages) is the quick local gate;
 `make check` (fmt-check, vet, build, lint, test) is the pre-push gate. Tests assert exact values: statuses, reasons,
@@ -144,4 +144,22 @@ The replay class of every REST problem type is pinned by `internal/adapters/inbo
 ## Mutation testing
 
 Gremlins thresholds (efficacy and mutant coverage) are measured per package and written into `.gremlins.yaml` as plain
-numbers before the first release; they are never set above the measurement and never lowered later.
+numbers; they are never set above the measurement and never lowered later. gremlins fails when the measured value is
+less than or equal to the threshold, and reads a quoted threshold as 0 (never gates).
+
+Measured per package (cold test cache, gremlins v0.6.0, workers 1, timeout coefficient 30):
+
+| Package | Killed | Lived | Not covered | Efficacy | Mutant coverage |
+| --- | --- | --- | --- | --- | --- |
+| `layout` | 39 | 0 | 0 | 100.00% | 100.00% |
+| `routing` | 6 | 0 | 0 | 100.00% | 100.00% |
+| `transportrequest` | 29 | 0 | 0 | 100.00% | 100.00% |
+| `containertrack` | 16 | 0 | 0 | 100.00% | 100.00% |
+| `stationqueue` | 15 | 0 | 0 | 100.00% | 100.00% |
+| `transportorder` | 67 | 0 | 0 | 100.00% | 100.00% |
+| `capacity` | 16 | 0 | 0 | 100.00% | 100.00% |
+
+The thresholds are 99 and 99. CI's `mutation-fast` job runs gremlins once per domain package on every push, under
+`ulimit -v 4000000`, so a mutant that loops without bound dies and counts as killed; the weekly `mutation` job runs
+the aggregate. Equivalent mutants were removed by behaviour-preserving rewrites (each its own `refactor` commit), so
+no mutant is excluded.
