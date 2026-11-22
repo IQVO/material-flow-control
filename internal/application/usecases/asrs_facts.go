@@ -7,6 +7,7 @@ import (
 	"github.com/IQVO/material-flow-control/internal/application/facts"
 	"github.com/IQVO/material-flow-control/internal/domain/capacity"
 	"github.com/IQVO/material-flow-control/internal/domain/containertrack"
+	"github.com/IQVO/material-flow-control/internal/domain/layout"
 	"github.com/IQVO/material-flow-control/internal/domain/routing"
 	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
 )
@@ -56,32 +57,52 @@ func (s *Service) OnContainerPresented(ctx context.Context, eventID, eventType s
 		if err != nil {
 			return err
 		}
-		t.MoveTo(containertrack.At(port), fl.now)
 		o, err := fl.orderByRef(f.Reference)
 		if err != nil {
 			return err
 		}
+		// carry (Task 10 review): a presentation re-emitted under a new event id after its RETRIEVE ended is stale:
+		// the container has moved on (a robot may hold it), so the track keeps its position.
+		if stalePresentation(o, f.Reference) {
+			s.skip(ctx, eventType, "stale presentation of a finished retrieve", f.Reference)
+			return fl.commit()
+		}
+		t.MoveTo(containertrack.At(port), fl.now)
 		if o == nil || o.Presented(f.Reference, port, fl.now) != nil {
 			return fl.commit()
 		}
-		if f.ScanResult == "READ" {
-			if o.CancelRequested() {
-				o.CancelRefused(fl.now)
-			}
-			err = fl.advance(o)
-		} else {
-			reason := containertrack.ReasonNoRead
-			if f.ScanResult == "MISMATCH" {
-				reason = containertrack.ReasonMismatch
-			}
-			err = fl.clarify(o, containertrack.Clarification{Reason: reason, ScannedContainerID: f.ScannedContainerID}, port,
-				transportorder.FailClarification, f.ScanResult)
-		}
-		if err != nil {
+		if err := presentedScan(fl, o, f, port); err != nil {
 			return err
 		}
 		return fl.commit()
 	})
+}
+
+// presentedScan acts on the scan of a presentation that ended its RETRIEVE: READ advances the order (a pending
+// cancellation is refused: the job finished), NO_READ and MISMATCH send the container to clarification. It is the
+// brief's block moved out of OnContainerPresented for gocognit (max 20), statements unchanged.
+func presentedScan(fl *flow, o *transportorder.Order, f facts.ContainerPresented, port layout.Place) error {
+	if f.ScanResult == "READ" {
+		if o.CancelRequested() {
+			o.CancelRefused(fl.now)
+		}
+		return fl.advance(o)
+	}
+	reason := containertrack.ReasonNoRead
+	if f.ScanResult == "MISMATCH" {
+		reason = containertrack.ReasonMismatch
+	}
+	return fl.clarify(o, containertrack.Clarification{Reason: reason, ScannedContainerID: f.ScannedContainerID}, port,
+		transportorder.FailClarification, f.ScanResult)
+}
+
+// stalePresentation reports whether ref names a RETRIEVE of o that already ended DONE (its presentation was applied).
+func stalePresentation(o *transportorder.Order, ref string) bool {
+	if o == nil {
+		return false
+	}
+	leg, ok := o.LegByRef(ref)
+	return ok && leg.Kind == routing.KindRetrieve && leg.Status == transportorder.LegDone
 }
 
 // OnStorageJobFailed maps a failed store or retrieve (decisions D12, D13, D15).

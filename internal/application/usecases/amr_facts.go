@@ -59,6 +59,12 @@ func (s *Service) OnContainerPickedUp(ctx context.Context, eventID, eventType st
 // review): only a MOVE is picked up, so a pickup naming another kind of leg is logged and confirms nothing; a MOVE's
 // pickup is still confirmed when its order already ended (decision D16: the port is empty either way).
 func (s *Service) pickedUpLeg(fl *flow, eventType string, o *transportorder.Order, f facts.ContainerPickedUp, fromOutputPort bool) {
+	// carry (Task 10 review): a pickup re-emitted under a new event id (the leg already picked up or done) confirms
+	// nothing a second time.
+	if leg, ok := o.LegByRef(f.Reference); ok && (leg.Status == transportorder.LegPickedUp || leg.Status == transportorder.LegDone) {
+		s.skip(fl.ctx, eventType, "repeated pickup", f.Reference)
+		return
+	}
 	if errors.Is(o.PickedUp(f.Reference, f.Robot, fl.now), transportorder.ErrWrongLeg) {
 		s.skip(fl.ctx, eventType, "fact does not match the leg's kind", f.Reference)
 	}
