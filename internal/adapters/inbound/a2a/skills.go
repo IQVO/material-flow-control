@@ -271,7 +271,7 @@ func problemFromUseCase(ctx context.Context, err error) *problem {
 			return newProblem(entry.p.Code, entry.p.Title, entry.p.Status, err.Error())
 		}
 	}
-	slog.ErrorContext(ctx, "a2a skill failed", "error", err)
+	slog.ErrorContext(ctx, "a2a skill failed", "error", logReplacer.Replace(err.Error()))
 	return newProblem("internal-error", "Internal server error", 500,
 		"the skill failed; see the server logs (trace id in the response metadata)")
 }

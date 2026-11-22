@@ -13,7 +13,7 @@ import (
 )
 
 func (s *Service) skip(ctx context.Context, eventType, why, id string) {
-	s.d.Log.DebugContext(ctx, "fact skipped", "type", eventType, "reason", why, "id", id)
+	s.d.Log.DebugContext(ctx, "fact skipped", "type", sanitizeLog(eventType), "reason", sanitizeLog(why), "id", sanitizeLog(id))
 }
 
 // OnContainerStored: the container is in the AS/RS (the registry learns it, decision D6); a STORE leg of ours ends.
