@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
@@ -67,7 +68,8 @@ func (d Deps) registerTools(server *mcp.Server) {
 		Meta:        authorityMeta(authorityL1)}, d.getTrack)
 	addTool(server, &mcp.Tool{Name: "get_station",
 		Description: "Read a goods-to-person station queue: buffer limit, the containers occupying it in position order and " +
-			"the containers waiting upstream in admission order (priority, then due time). Read-only.",
+			"the containers waiting upstream in admission order (priority, then due time). Read-only; an unknown station fails with " +
+			"station-not-found.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
 		Meta:        authorityMeta(authorityL1)}, d.getStation)
 	addTool(server, &mcp.Tool{Name: "list_subsystems",
@@ -77,19 +79,23 @@ func (d Deps) registerTools(server *mcp.Server) {
 		Meta:        authorityMeta(authorityL1)}, d.listSubsystems)
 	addTool(server, &mcp.Tool{Name: "list_equipment_units",
 		Description: "List the last reported state of every shuttle-and-lift unit of one AS/RS (IDLE, EXECUTE, HELD), as " +
-			"asrs-control's EquipmentStateChanged reported it. Read-only.",
+			"asrs-control's EquipmentStateChanged reported it. Read-only; an AS/RS the layout does not name fails with asrs-not-found.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
 		Meta:        authorityMeta(authorityL1)}, d.listUnits)
 }
 
 func (d Deps) getTransport(ctx context.Context, in transportInput) (transportPayload, error) {
-	v, err := d.Reads.Transport(ctx, in.TransportRequestID)
+	id, err := requiredID("transportRequestId", in.TransportRequestID)
+	if err != nil {
+		return transportPayload{}, err
+	}
+	v, err := d.Reads.Transport(ctx, id)
 	if err != nil {
 		return transportPayload{}, mapError(ctx, err)
 	}
 	var o transportorder.Snapshot
 	if v.OrderID != "" {
-		if o, err = d.Reads.OrderDetail(ctx, in.TransportRequestID); err != nil {
+		if o, err = d.Reads.OrderDetail(ctx, id); err != nil {
 			return transportPayload{}, mapError(ctx, err)
 		}
 	}
@@ -97,7 +103,11 @@ func (d Deps) getTransport(ctx context.Context, in transportInput) (transportPay
 }
 
 func (d Deps) getTrack(ctx context.Context, in containerInput) (trackPayload, error) {
-	v, err := d.Reads.Track(ctx, in.ContainerID)
+	id, err := requiredID("containerId", in.ContainerID)
+	if err != nil {
+		return trackPayload{}, err
+	}
+	v, err := d.Reads.Track(ctx, id)
 	if err != nil {
 		return trackPayload{}, mapError(ctx, err)
 	}
@@ -105,7 +115,11 @@ func (d Deps) getTrack(ctx context.Context, in containerInput) (trackPayload, er
 }
 
 func (d Deps) getStation(ctx context.Context, in stationInput) (stationPayload, error) {
-	s, err := d.Reads.Station(ctx, in.StationID)
+	id, err := requiredID("stationId", in.StationID)
+	if err != nil {
+		return stationPayload{}, err
+	}
+	s, err := d.Reads.Station(ctx, id)
 	if err != nil {
 		return stationPayload{}, mapError(ctx, err)
 	}
@@ -121,11 +135,15 @@ func (d Deps) listSubsystems(ctx context.Context, _ noInput) (subsystemsPayload,
 }
 
 func (d Deps) listUnits(ctx context.Context, in asrsInput) (unitsPayload, error) {
-	us, err := d.Reads.EquipmentUnits(ctx, in.AsrsID)
+	id, err := requiredID("asrsId", in.AsrsID)
+	if err != nil {
+		return unitsPayload{}, err
+	}
+	us, err := d.Reads.EquipmentUnits(ctx, id)
 	if err != nil {
 		return unitsPayload{}, mapError(ctx, err)
 	}
-	return toUnits(in.AsrsID, us), nil
+	return toUnits(id, us), nil
 }
 
 // tracerName is the instrumentation scope of the tool spans ("mcp.tool <name>").
@@ -151,4 +169,13 @@ func addTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handle func(contex
 		}
 		return nil, out, nil
 	})
+}
+
+// requiredID is the agent surfaces' one argument rule (the A2A skills' `required`): the id is trimmed, and blank after
+// trimming is invalid-argument. carry (Task 21 review)
+func requiredID(name, v string) (string, error) {
+	if v = strings.TrimSpace(v); v == "" {
+		return "", toolError("invalid-argument", name+" is required")
+	}
+	return v, nil
 }

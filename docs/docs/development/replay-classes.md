@@ -58,7 +58,7 @@ replay class applies:
 | `asrs-not-found` | 404 | MCP `list_equipment_units`, A2A `equipment_units` | an `asrsId` the layout does not name (asrs-control's slug for the same outcome) |
 | `unknown-skill` | 400 | A2A | a `skill` id the Agent Card does not offer (its span is `a2a.skill unknown`) |
 | `malformed-skill-request` | 400 | A2A | a message with no parts, a first part that is not a skill request, invalid JSON, a trailing value or an inexact key, or no `skill` field |
-| `invalid-argument` | 400 | A2A | `arguments` that do not decode strictly (an unknown or inexact key, trailing data), or a required argument (`transportRequestId`, `containerId`, `stationId`, `asrsId`) that is missing or blank |
+| `invalid-argument` | 400 | A2A, MCP | `arguments` that do not decode strictly (an unknown or inexact key, trailing data), or a required argument (`transportRequestId`, `containerId`, `stationId`, `asrsId`) that is missing or blank; on both surfaces an id blank after trimming (ids are trimmed before they are read) |
 
 An MCP tool error is an `isError` result `<code>: <detail>`; an A2A problem is the envelope's `problem` (`type`
 `https://errors.material-flow-control.warehouse-systems.dev/<code>`, `title`, `status`, `code`, `detail`).

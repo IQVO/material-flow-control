@@ -78,7 +78,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Read a goods-to-person station queue: buffer limit, the containers occupying it in position order and the containers waiting upstream in admission order (priority, then due time). Read-only.",
+    "description": "Read a goods-to-person station queue: buffer limit, the containers occupying it in position order and the containers waiting upstream in admission order (priority, then due time). Read-only; an unknown station fails with station-not-found.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -283,7 +283,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "List the last reported state of every shuttle-and-lift unit of one AS/RS (IDLE, EXECUTE, HELD), as asrs-control's EquipmentStateChanged reported it. Read-only.",
+    "description": "List the last reported state of every shuttle-and-lift unit of one AS/RS (IDLE, EXECUTE, HELD), as asrs-control's EquipmentStateChanged reported it. Read-only; an AS/RS the layout does not name fails with asrs-not-found.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
