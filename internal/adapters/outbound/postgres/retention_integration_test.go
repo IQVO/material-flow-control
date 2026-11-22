@@ -4,12 +4,14 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/IQVO/material-flow-control/internal/adapters/outbound/postgres"
+	"github.com/IQVO/material-flow-control/internal/application/ports"
 	"github.com/IQVO/material-flow-control/internal/domain/containertrack"
 	"github.com/IQVO/material-flow-control/internal/domain/stationqueue"
 	"github.com/IQVO/material-flow-control/internal/testing/pgtest"
@@ -284,5 +286,20 @@ func TestOrderRetentionWaitsForTheFlowLock(t *testing.T) {
 	}
 	if r := <-purged; r.err != nil || r.n != 1 {
 		t.Fatalf("after the lock was released: purged %d, err %v; want 1, nil", r.n, r.err)
+	}
+}
+
+// carry (retention review): what the expired answer rests on (ruling P4-R22). After the order purge the request
+// record still reads, and its order reads ports.ErrNotFound, which the use cases turn into ErrTransportExpired.
+func TestAfterTheOrderPurgeTheRecordReadsAndItsOrderIsNotFound(t *testing.T) {
+	pool := pgtest.Pool(t)
+	ctx := context.Background()
+	seedOrder(t, pool, "O-OLD", "COMPLETED", retOld)
+	purge(t, postgres.NewOrderRetention(pool, 100), retCutoff)
+	if _, err := postgres.NewRequests(pool).Get(ctx, "REQ-O-OLD"); err != nil {
+		t.Fatalf("the record of a purged order = %v, want it kept", err)
+	}
+	if _, err := postgres.NewOrders(pool).Get(ctx, "O-OLD"); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("the purged order = %v, want ports.ErrNotFound", err)
 	}
 }
