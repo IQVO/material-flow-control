@@ -121,8 +121,9 @@ GitFlow: feature branches into `develop` through pull requests; `main` is the re
 ## Tests
 
 `go test ./... -race` (unit), `make bdd` (the eight acceptance scenarios, godog), `make integration`
-(`//go:build integration`, Postgres and Kafka in testcontainers), `make arch-test` (hexagonal rule and fitness
-tests), `make coverage` (90% gate over domain and application), `make mutation` (gremlins).
+(`//go:build integration`, Postgres and Kafka in testcontainers; it includes the end-to-end test against the released
+asrs-control, amr-fleet-control and equipment-emulator images, see `docs/docs/development/testing.md`), `make arch-test`
+(hexagonal rule and fitness tests), `make coverage` (90% gate over domain and application), `make mutation` (gremlins).
 
 ## Architecture Decision Records
 

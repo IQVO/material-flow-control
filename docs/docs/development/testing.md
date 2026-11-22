@@ -11,7 +11,7 @@ description: "Unit tests, the eight BDD acceptance scenarios, integration tests 
 | --- | --- | --- |
 | Unit | `go test ./... -race` (part of `make check`) | domain aggregates and policies, use cases over the in-memory doubles (`internal/adapters/outbound/memory`), the adapters' encoding, decoding and problem catalogues, the composition roots' configuration and shutdown order |
 | BDD | `make bdd` | the eight acceptance rows of the context's implementation handoff, as godog scenarios over the use cases |
-| Integration | `make integration` (`go test -tags integration ./...`) | the Postgres repositories, the flow lock and its timeouts, the Idempotency middleware over real Postgres, the consumers and the relay over real Kafka, `cmd/api` traces and outbox gauges |
+| Integration | `make integration` (`go test -tags integration ./...`) | the Postgres repositories, the flow lock and its timeouts, the Idempotency middleware over real Postgres, the consumers and the relay over real Kafka, `cmd/api` traces and outbox gauges, the end-to-end test against the released subsystems |
 | Fitness | `make arch-test` | the hexagonal import rules (arch-go) and the sensors in `internal/architecture` |
 | Coverage | `make coverage` | at least 90% of `./internal/domain/...` and `./internal/application/...` |
 | Mutation | `make mutation` | gremlins per package (efficacy and mutant coverage), thresholds measured before the first release |
@@ -43,21 +43,53 @@ Every test that needs a container carries `//go:build integration`, compiles und
 never calls `t.Skip` and never reads a database URL from the environment. `internal/testing/pgtest` starts one
 Postgres 16 container per test binary; `internal/testing/kafkatest` starts `confluentinc/confluent-local:7.6.1` with
 topic auto-creation off, rewrites the brokers to `127.0.0.1` and creates one-partition topics with an awaited leader
-before a consumer under test is built. CI's `integration` job is their gate.
+before a consumer under test is built; both join the test binary's one Docker network (`internal/testing/dockernet`).
+CI's `integration` job is their gate.
 
 ## The end-to-end test
 
-:::note
-The end-to-end test is not in the repository yet (Task 25 of the build plan adds it). This section states what it
-will run.
-:::
+`cmd/api/e2e_subsystems_integration_test.go` (`TestTheEightAcceptanceRowsAgainstTheRealSubsystems`) runs
+material-flow-control in-process against the REAL subsystems, each the image built from its released commit, with no
+in-test subsystem fake:
 
-The end-to-end test (`cmd/api/e2e_subsystems_integration_test.go`) will run material-flow-control in-process against
-the REAL `asrs-control`, `amr-fleet-control` and `equipment-emulator` built from pinned commits, with Postgres, Kafka
-and Mosquitto in testcontainers, and no in-test subsystem fake; `amr-fleet-control` is built from `09a8f19`, the
-commit `contracts/pinned.json` pins. amr-fleet-control is merged and its two contracts are pinned, so until the
-end-to-end test lands its client and consumer are proven against the pinned copies (see
-[Consumer contract tests](#consumer-contract-tests)).
+| Subsystem | Release | Commit | Environment variable |
+| --- | --- | --- | --- |
+| `IQVO/equipment-emulator` | v0.1.0 | `b58201e` | `EQUIPMENT_EMULATOR_IMAGE` |
+| `IQVO/asrs-control` | v0.1.1 | `a3e172d` (its contracts equal the pinned `b23a5a2`) | `ASRS_CONTROL_IMAGE` |
+| `IQVO/amr-fleet-control` | v0.1.0 | `09a8f19` (the commit `contracts/pinned.json` pins) | `AMR_FLEET_CONTROL_IMAGE` |
+
+`AMR_FLEET_CONTROL_MAP` names amr-fleet-control's `config/map.example.yaml` at that commit; the test adds the nodes
+`PK1`, `FWD1` and `CLR1` to it. Every container (Postgres, Kafka, Mosquitto, the three subsystems) joins the test
+binary's one network (`internal/testing/dockernet`): there the broker is `kafka:9092`
+(`kafkatest.InternalBrokers`) and Postgres is `postgres:5432` (`pgtest.NetworkURL`), while the test process uses the
+mapped `127.0.0.1` ports. asrs-control and amr-fleet-control each get an empty database (`pgtest.EmptyURL`) and run
+their own migrations at boot. The floor files are `cmd/api/testdata/e2e/`: `world.yaml` (the emulator),
+`asrs-layout.yaml` (asrs-control's layout: the world's `asrs` block, held equal by `TestTheFloorFilesDescribeOneFloor`)
+and `flow-layout.yaml` (byte-equal to `config/flow-layout.example.yaml`).
+
+The rows, in order, asserted on the REST answers and on `warehouse.material-flow-control.events`: putaway of TOTE-1..3
+from the decant handoff (`IN_ASRS`), goods-to-person (PICK TOTE-1 to ST1, queue position 1), idempotency (the same
+`transport_request_id` under a new key: one order), rejection (`422 CONTAINER_BUSY`, `TransportRejected`, no order),
+replenishment (TOTE-2 to `FWD1`), the return of TOTE-1, outbound (`FWD1` to `PK1`), clarification (`ASRS_NO_READ`:
+`TransportFailed` `CLARIFICATION`, `ContainerSentToClarification` `NO_READ`, the track `AT_CLARIFICATION` at
+`WH1-CLR-CLR1`) and the capacity loop (`ROBOT_DISCONNECT` of R2: `AMR_FLEET/AMR1` `DEGRADED`, one unit fewer, within
+60 s). On a failure the test prints each container's log tail.
+
+CI's `integration` job checks out the three commits, builds the images and sets the four variables. Locally (an arm64
+host builds natively; the published images are amd64-only):
+
+```bash
+git -C ../equipment-emulator archive b58201e14342c99f5033327214ea317eb2a17962 | docker build -t equipment-emulator:e2e -
+git -C ../asrs-control archive a3e172d34131928fb5178380e6664d8a117c5ed2 | docker build -t asrs-control:e2e -
+git -C ../amr-fleet-control archive 09a8f1915be5129efbb240dd6730fec640f93635 | docker build -t amr-fleet-control:e2e -
+mkdir -p .e2e/amr-fleet-control/config
+git -C ../amr-fleet-control show 09a8f1915be5129efbb240dd6730fec640f93635:config/map.example.yaml > .e2e/amr-fleet-control/config/map.example.yaml
+EQUIPMENT_EMULATOR_IMAGE=equipment-emulator:e2e ASRS_CONTROL_IMAGE=asrs-control:e2e \
+  AMR_FLEET_CONTROL_IMAGE=amr-fleet-control:e2e AMR_FLEET_CONTROL_MAP=$PWD/.e2e/amr-fleet-control/config/map.example.yaml \
+  go test -tags integration ./cmd/api/ -run TestTheEightAcceptanceRows -count=1 -v
+```
+
+Raising a pin is a deliberate change (a new commit in `ci.yml` and here, the test rerun), never `develop`.
 
 ## Consumer contract tests
 
@@ -70,6 +102,9 @@ beside each adapter read the pinned copies:
 | `internal/adapters/inbound/kafka/pinned_asrs_test.go`, `pinned_amr_test.go` | every pinned example of a consumed type is applied by the production handler; every field the consumer decodes exists in the pinned schema; the capacity mapping fields exist and `robots_total` may be 0 |
 | `internal/adapters/inbound/kafka/required_fields_test.go` | every field the pinned schema requires is required (poison without it), the optional ones may be absent, the enums are the pinned ones, and the amr-fleet-control fixtures satisfy the pinned schema |
 | `internal/adapters/outbound/amr/pinned_test.go` | the paths exist, the leg request sends only declared properties and every required one, the `Leg` answer carries what the client reads, and `amr.Retryable` equals the pinned RETRYABLE refusals |
+| `internal/adapters/inbound/kafka/pinned_channels_test.go` | `AsrsTopic` and `AmrTopic` are integration channels of the pinned AsyncAPI and every handled type resolves through that channel's `subscribe.message.oneOf` |
+| `internal/adapters/inbound/kafka/pinned_reasons_test.go` | the LegFailed reasons the consumer accepts are exactly the pinned enum |
+| `internal/adapters/outbound/amr/pinned_idempotency_test.go`, `internal/adapters/outbound/asrs/pinned_idempotency_test.go` | every POST the client sends declares the `Idempotency-Key` header, required, long enough for the longest key the dispatcher mints |
 
 ## Fitness tests (`internal/architecture`)
 
