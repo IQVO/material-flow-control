@@ -8,7 +8,7 @@ import (
 	"github.com/IQVO/material-flow-control/internal/application/facts"
 )
 
-// The amr-fleet-control payloads (plan 03's relationship-4 event fields; pinned in Task 24). robot_timestamp is
+// The amr-fleet-control payloads (contracts/amr-fleet-control.asyncapi.yaml, pinned at 09a8f19). robot_timestamp is
 // ignored and map_version is checked but not applied (tolerant reader).
 //
 // carry (Task 15 review): every field plan 03's Task 13 schema table requires is required here, a present robot needs

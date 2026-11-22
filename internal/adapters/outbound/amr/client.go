@@ -1,5 +1,5 @@
-// Package amr is the amr-fleet-control REST client (relationship 4), against plan 03's interface table until
-// Task 24 pins its built apis/openapi.yaml.
+// Package amr is the amr-fleet-control REST client (relationship 4), proven against the pinned
+// contracts/amr-fleet-control.openapi.yaml (09a8f19).
 package amr
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/IQVO/material-flow-control/internal/application/subsystem"
 )
 
-// Retryable lists amr-fleet-control's RETRYABLE refusals (plan 03 relationship-4 table, R column).
+// Retryable lists amr-fleet-control's RETRYABLE refusals (the pinned OpenAPI's replay classes; plan 03 relationship-4 R column).
 var Retryable = []string{"handoff-unreachable", "container-busy", "fleet-unavailable",
 	// carry (Task 8 review): the two cancellation refusals are 409 R in the relationship-4 table.
 	"leg-not-cancellable", "leg-ended",
