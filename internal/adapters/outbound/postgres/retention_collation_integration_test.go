@@ -29,14 +29,13 @@ func TestTheOrderPurgeGuardsLookUpTheirLiveRowsByIndex(t *testing.T) {
 	exec(t, seed, `INSERT INTO container_tracks (container_id, position_kind, active_order_id, in_clarification, snapshot, version,
 		updated_at) SELECT 'C-T-' || i, 'AT_STATION', 'X-' || i, false, '{}', 1, $1 FROM generate_series(1, 5000) i`, retOld)
 	seedOrders(t, seed, 200, 100)
-	var p plans
-	pool := explainedPool(t, url, &p, `SET enable_seqscan = off; SET enable_hashjoin = off; SET enable_mergejoin = off`)
+	pool, p := pgtest.ExplainedPool(t, url, `SET enable_seqscan = off; SET enable_hashjoin = off; SET enable_mergejoin = off`)
 	if _, err := postgres.NewOrderRetention(pool, 1000).Purge(context.Background(), retCutoff); err != nil {
 		t.Fatal(err)
 	}
 	for _, index := range []string{"idx_container_tracks_active_order", "idx_subsystem_commands_pending_order"} {
-		if conds := p.indexConds(t, index); len(conds) == 0 {
-			t.Errorf("no plan of the order purge looks rows up by %s (%d plans): the guard cannot use it", index, len(p.raw))
+		if conds := indexConds(t, p, index); len(conds) == 0 {
+			t.Errorf("no plan of the order purge looks rows up by %s (%d plans): the guard cannot use it", index, p.Len())
 		}
 	}
 }
