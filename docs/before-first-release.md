@@ -32,3 +32,26 @@ Tick this list in the PR that adds `Dockerfile`/chart wiring, and keep the file:
 service's packaging record. Reference for the three failures this list prevents: a runtime that
 can run without Postgres/Kafka (row 1), Go files at the root (row 2), a release that fails on
 the first push to `main` because packaging was never built (rows 3-8).
+
+## Status at the first `develop` PR (plan 04 Task 26, IQVO/material-flow-control#2)
+
+| # | Status | Evidence |
+|---|--------|----------|
+| 1 | done | `cmd/api` wires Postgres and Kafka only; `TestRuntimeBinaryHasNoInMemoryAdapters`; boot errors pinned by `cmd/api/config_test.go` (`TestAnEmptyEnvironmentNamesEveryMandatoryVariableAtOnce`) and `cmd/api/main_test.go` (`TestABootErrorIsOneJSONLineNamingEveryBadVariable`). |
+| 2 | done | `TestNoGoFilesAtRepoRoot`; the godog runner lives in `features/`. |
+| 3 | done | The `Dockerfile` builds every `cmd/*` (`api`, `mcp`, `a2a`), `ENTRYPOINT ["/app/api"]`, `EXPOSE 8080 8090 8093`; `trivy-scan` builds the image on every PR; the e2e builds the three subsystem images from their pinned commits. |
+| 4 | done | `.dockerignore` from the fleet reference, unchanged. |
+| 5 | done | `charts/material-flow-control/` (`name: material-flow-control`); `helm-lint` green on PR #2. |
+| 6 | done | `DATABASE_URL` (and the read-only DSN of `cmd/mcp`/`cmd/a2a`) from `secretKeyRef`; asserted by `render_test.sh`. |
+| 7 | done | Hardened pod spec; `render_test.sh` refuses `terminationGracePeriodSeconds` below 40 (the 30 s shutdown bound plus margin). |
+| 8 | done | `charts/material-flow-control/tests/`: `render_test.sh`, `test_service_selectors.py`, `test_agents_colocation.py`, `test_kong_config.py`; `chart-tests` green on PR #2. |
+| 9 | done | `config.asrsConsumerGroup` / `config.amrConsumerGroup` (`material-flow-control.asrs-control-events`, `material-flow-control.amr-fleet-control-events`), refused empty by the chart test; `kafka_reader_fitness_test.go` refuses a literal group in code. |
+| 10 | done | No `web/`, so no `web` job; `api-lint`, `docs-api-drift` and `spec-breaking` run against `apis/`. |
+| 11 | open | Not dry-run: verified by the first `docker-publish` on `main` (the `packages: write` permissions are in `ci.yml`). |
+| 12 | done | `govulncheck ./...` clean at the PR head (`vuln` green on PR #2). |
+
+Also delivered before the first release: the Docusaurus docs site (`docs/`, the `Docs` workflow green on PR #2), ADRs
+0001-0007, the mutation gate live (`.gremlins.yaml` efficacy and mutant coverage 99/99, `mutation-fast` once per
+domain package, every package measured 100/100), the end-to-end test against the released subsystems in the
+`integration` job, and the boot catch-up gate of ruling P4-R20. Still open after the merge: the retention purgers of
+`container_moves`, ended orders, `DONE`/`FAILED` commands and published outbox rows (IQVO/material-flow-control#3).

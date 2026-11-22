@@ -1,0 +1,38 @@
+# carry (Task 23 review): an application values file shaped like warehouse-infra's helm-values/asrs-control.yaml
+# (develop 229ccb3) with the name swapped. render_test.sh renders it over fixtures/platform-values.yaml (a byte copy of
+# warehouse-infra helm-values/_platform.yaml at 846e236) the way the ArgoCD Application layers them: the platform
+# file first. Brokers, the Gateway parentRefs, the CORS origin and the OTLP endpoint come from the platform file.
+
+database:
+  existingSecret: material-flow-control-db
+  existingSecretKey: DATABASE_URL
+  migrationsExistingSecretKey: MIGRATIONS_DATABASE_URL
+
+gatewayApi:
+  enabled: true
+
+kongPlugins:
+  cors:
+    enabled: true
+  prometheus:
+    enabled: true
+  opentelemetry:
+    enabled: true
+
+image:
+  pullPolicy: IfNotPresent
+  repository: warehouse/material-flow-control
+
+service:
+  type: ClusterIP
+
+mcp:
+  enabled: true
+  route:
+    enabled: true
+    path: /api/mcp/material-flow-control
+a2a:
+  enabled: true
+  route:
+    enabled: true
+    path: /api/a2a/material-flow-control

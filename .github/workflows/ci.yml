@@ -36,6 +36,13 @@ jobs:
         with:
           version: v2.14.0
           args: --timeout=5m
+      # carry (Task 26 review): the integration-tagged files (testcontainers suites, the e2e) are linted too; the
+      # default build excludes them, so the first step never sees them.
+      - name: golangci-lint (integration build tag)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: v2.14.0
+          args: --timeout=5m --build-tags integration
 
   # Agent-guide sensor (harness-template v3): skills load, references resolve, context budget.
   # ADVISORY (continue-on-error) until the guides are clean; then flip to blocking.
@@ -164,30 +171,78 @@ jobs:
   # ============================================================
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     # No Postgres service container: every integration test boots its own
     # Postgres (and Kafka) via testcontainers on the runner's Docker daemon.
+    # The e2e test (cmd/api/e2e_subsystems_integration_test.go) runs against the
+    # RELEASED subsystems, each image built from its pinned commit below. Raising
+    # a pin is a deliberate change (a new sha here, the e2e rerun), never `develop`.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check out the equipment emulator the e2e test runs against (pinned commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: IQVO/equipment-emulator
+          ref: b58201e14342c99f5033327214ea317eb2a17962 # v0.1.0 (the released emulator)
+          path: .e2e/equipment-emulator
+      - name: Check out asrs-control (pinned commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: IQVO/asrs-control
+          ref: a3e172d34131928fb5178380e6664d8a117c5ed2 # v0.1.1 (the released asrs-control)
+          path: .e2e/asrs-control
+      - name: Check out amr-fleet-control (pinned commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: IQVO/amr-fleet-control
+          ref: 09a8f1915be5129efbb240dd6730fec640f93635 # v0.1.0 (the released amr-fleet-control; contracts/pinned.json)
+          path: .e2e/amr-fleet-control
+      - name: Build the three subsystem images (BuildKit)
+        run: |
+          set -euo pipefail
+          docker build -t equipment-emulator:e2e .e2e/equipment-emulator
+          docker build -t asrs-control:e2e .e2e/asrs-control
+          docker build -t amr-fleet-control:e2e .e2e/amr-fleet-control
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - name: Integration tests (testcontainers; each test boots its own Postgres/Kafka)
-        run: go test -tags=integration ./... -race -count=1
+      - name: Integration tests (testcontainers; Postgres, Kafka, Mosquitto and the three subsystems)
+        env:
+          EQUIPMENT_EMULATOR_IMAGE: equipment-emulator:e2e
+          ASRS_CONTROL_IMAGE: asrs-control:e2e
+          AMR_FLEET_CONTROL_IMAGE: amr-fleet-control:e2e
+          AMR_FLEET_CONTROL_MAP: ${{ github.workspace }}/.e2e/amr-fleet-control/config/map.example.yaml
+        # -timeout 25m: the e2e test's waits sum to 24 min at worst (its budget comment); go test's 10 min default
+        # would panic first. carry (Task 25 review)
+        run: go test -tags=integration ./... -race -count=1 -timeout 25m
 
-  # Fast, BLOCKING mutation subset: runs on every push/PR so a drop in test
-  # quality (tests that execute but stop asserting) is caught immediately.
-  # Subset = ./internal/domain/transportorder, the StockUnit aggregate: the richest
-  # behavioural core in the domain (15 of the 41 domain mutants) and it
-  # completes in ~1 minute. Thresholds/workers/timeout come from .gremlins.yaml,
-  # so this job, the scheduled `mutation` job below and `make mutation` all
-  # agree. The exhaustive run stays in the `mutation` job.
+  pinned-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Pins equal the producer's develop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/harness/pinned_contract_gate.py
+      - name: The gate's own tests
+        run: python3 scripts/harness/test_pinned_contract_gate.py
+
+  # Fast, BLOCKING mutation gate: runs on every push/PR so a drop in test quality (tests that
+  # execute but stop asserting) is caught immediately. It runs gremlins once PER domain package
+  # (layout, routing, transportrequest, containertrack, stationqueue, transportorder, capacity:
+  # ~190 mutants, a few minutes), because the aggregate hides a weak package and a gate of 99 needs
+  # > 99.00% in each. Thresholds, workers and timeout come from .gremlins.yaml (plain numbers; a
+  # quoted threshold never gates). The weekly `mutation` job below runs the aggregate (plan 04
+  # Task 26; amr-fleet-control's job, ported).
   # ============================================================
-  # CLASSIFICATION: TEST QUALITY (MUTATION TESTING, fast subset)
+  # CLASSIFICATION: TEST QUALITY (MUTATION TESTING, every domain package)
   # ============================================================
   mutation-fast:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -195,8 +250,15 @@ jobs:
           go-version-file: go.mod
       - name: Install gremlins
         run: go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
-      - name: Mutation testing (fast subset — transportorder aggregate)
-        run: gremlins unleash ./internal/domain/transportorder
+      - name: Mutation testing (every domain package)
+        run: |
+          # Cap virtual memory so a mutant that loops without bound dies with "out of memory" and
+          # counts as KILLED, instead of exhausting the runner VM (equipment-emulator precedent).
+          ulimit -v 4000000
+          for pkg in ./internal/domain/*/; do
+            echo "== gremlins unleash ${pkg%/}"
+            gremlins unleash "${pkg%/}" || exit 1
+          done
 
   mutation:
     runs-on: ubuntu-latest
@@ -302,6 +364,31 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: govulncheck
         run: govulncheck ./...
+
+  docs-api-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: npm ci
+      - name: Regenerate REST API docs from apis/openapi.yaml
+        run: npm run clean-api-docs material-flow-control && npm run gen-api-docs material-flow-control
+      - name: Fail if generated docs differ from what's committed
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- docs/api-reference/rest; then
+            echo "::error::docs/api-reference/rest is out of sync with apis/openapi.yaml." \
+                 "Run 'npm run gen-api-docs material-flow-control' inside docs/ and commit the result."
+            exit 1
+          fi
 
   # Packaging validation runs for every pull request, including the normal
   # GitFlow path to develop; main-only gating left ordinary changes untested.

@@ -1,0 +1,85 @@
+---
+id: material-flow-control
+title: "material-flow-control"
+description: "The relationship-1 interface of **material-flow-control** (WCS tier, Supporting; ADR 0001, ADR 0005): the one"
+sidebar_label: Introduction
+sidebar_position: 0
+hide_title: true
+custom_edit_url: null
+---
+
+import ApiLogo from "@theme/ApiLogo";
+import Heading from "@theme/Heading";
+import SchemaTabs from "@theme/SchemaTabs";
+import TabItem from "@theme/TabItem";
+import Export from "@theme/ApiExplorer/Export";
+
+<span
+  className={"theme-doc-version-badge badge badge--secondary"}
+  children={"Version: 0.1.0"}
+>
+</span>
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"material-flow-control"}
+>
+</Heading>
+
+
+
+The relationship-1 interface of **material-flow-control** (WCS tier, Supporting; ADR 0001, ADR 0005): the one
+door from the WES (fulfillment-execution) to the automation. A transport request is accepted or rejected at
+once (`202` or `422`); its progress is reported only through events on `warehouse.material-flow-control.events`
+(TransportAccepted, ContainerArrivedAtStation, TransportCompleted, TransportFailed), never by polling.
+
+Base path: the Service `material-flow-control` on :8080 (in-cluster
+`http://material-flow-control.warehouse-systems.svc.cluster.local`), through Kong at
+`/api/material-flow-control`. Every POST requires `Idempotency-Key` (1-128 printable ASCII characters); a replayed answer carries
+`Idempotency-Replayed: true`. Bodies snake_case; errors RFC 9457 `application/problem+json` with a stable
+`code`. No authentication. Location vocabulary: the AS/RS is addressed by its logical `LocationCode`
+(`WH1-AUTO-ASRS-ASRS1-00-00-S`, plan 05a D14); a goods-to-person station by its station id (`ST1`) or its
+`LocationCode`; any other place (decant, pack station, dock door, forward-area handoff, clarification point)
+by its `LocationCode`. No route or body names a robot, a leg, a node or a storage job.
+
+**Two idempotency layers.** The fleet `Idempotency-Key` (24 hours) and the domain key `transport_request_id`
+(a retry of the same id and request returns the original outcome and creates nothing; the same id with
+another request is `409 transport-request-conflict`; a rejected id stays rejected, so the caller sends a NEW
+`transport_request_id`, derived from the task id and the attempt, to try again).
+
+**Replay classes** (every problem type declares one): FINAL — a function of the request alone, stored and
+replayed (`bad-request`, `invalid-parameter`, `transport-request-conflict`, `station-not-found`,
+`unknown-location`, `idempotency-key-required`, `idempotency-key-invalid`, `idempotency-key-reused`); OUTCOME — the four rejections
+(`unknown-container`, `container-busy`, `destination-unreachable`, `subsystem-unavailable`): the rejection
+record and `TransportRejected` commit WITH
+the stored answer, and a replay creates nothing; RETRYABLE — the key is released, so a retry under the same key
+executes again (`transport-request-not-found`, `container-track-not-found` — the caller mints the
+`transport_request_id` and a `ContainerStored` fact or an acceptance creates a track, so the target can exist
+by the retry; `transport-not-cancellable`, `transport-ended`, `not-in-clarification`, `internal-error`,
+`dependency-unavailable`). 2xx answers are stored; 5xx answers and panics never are. Releasing a key means the
+same key with another body is a NEW request, not `idempotency-key-reused`.
+
+
+<div
+  style={{"display":"flex","flexDirection":"column","marginBottom":"var(--ifm-paragraph-margin-bottom)"}}
+>
+  <h3
+    style={{"marginBottom":"0.25rem"}}
+  >
+    Contact
+  </h3><span>
+    material-flow-control maintainers: [material-flow-control@iqvo.example.com](mailto:material-flow-control@iqvo.example.com)
+  </span><span>
+    URL: [https://github.com/IQVO/material-flow-control](https://github.com/IQVO/material-flow-control)
+  </span>
+</div><div
+  style={{"marginBottom":"var(--ifm-paragraph-margin-bottom)"}}
+>
+  <h3
+    style={{"marginBottom":"0.25rem"}}
+  >
+    License
+  </h3>
+</div>
+      

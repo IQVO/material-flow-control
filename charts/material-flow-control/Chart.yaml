@@ -1,0 +1,8 @@
+apiVersion: v2
+name: material-flow-control
+description: material-flow-control - the WCS material flow controller (transport orders through handoff points, container tracking, station sequencing, clarification, subsystem capacity), with read-only MCP and A2A
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/IQVO/material-flow-control
+keywords: [wcs, material-flow, transport, golang]

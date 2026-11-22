@@ -54,7 +54,7 @@ make check-fast   # fmt-check + vet + arch-test: run before saying "done"
 make check        # fmt-check vet build lint test
 make check-all    # check + coverage + arch-test + bdd (the full local gate)
 make integration  # real Postgres/Kafka via testcontainers (needs Docker)
-make mutation     # gremlins on the richest aggregate (thresholds in .gremlins.yaml, measured first)
+make mutation     # gremlins once per domain package, as CI (thresholds in .gremlins.yaml, measured first)
 make guide-lint   # these guides: skills load, references resolve, context budget
 make harness-test # unit-test the agent hooks
 ```
@@ -62,9 +62,10 @@ make harness-test # unit-test the agent hooks
 `cmd/api`: `DATABASE_URL`, `KAFKA_BROKERS`, `ASRS_CONTROL_URL` (e.g. `http://localhost:8081`),
 `AMR_FLEET_CONTROL_URL` (e.g. `http://localhost:8082`) and `MFC_LAYOUT_FILE` (e.g. `config/flow-layout.example.yaml`)
 are required; optional: `MIGRATIONS_DATABASE_URL`, `ADDR` (`:8080`), `LOG_LEVEL`, `MFC_ASRS_CONSUMER_GROUP`,
-`MFC_AMR_CONSUMER_GROUP`, `OUTBOX_INTERVAL_MS`, `OUTBOX_BATCH`, `OUTBOX_MAX_ATTEMPTS`, `DISPATCH_INTERVAL_MS`,
-`SUBSYSTEM_TIMEOUT_MS`, `LEG_RETRY_LIMIT`, `LEG_REQUEST_DEADLINE_SECONDS`, `LEG_TIMEOUT_SECONDS`,
-`OTEL_EXPORTER_OTLP_ENDPOINT` (empty = telemetry off), `OTEL_SERVICE_NAME`, `SERVICE_VERSION`.
+`MFC_AMR_CONSUMER_GROUP`, `OUTBOX_INTERVAL_MS`, `OUTBOX_BATCH`, `OUTBOX_MAX_ATTEMPTS`, `DISPATCH_POLL_MS`,
+`TICK_INTERVAL_MS`, `SUBSYSTEM_TIMEOUT_MS`, `LEG_RETRY_LIMIT`, `LEG_REQUEST_DEADLINE_SECONDS`, `LEG_TIMEOUT_SECONDS`,
+`OTEL_EXPORTER_OTLP_ENDPOINT` (empty = telemetry off), `OTEL_SERVICE_NAME`, `SERVICE_VERSION`,
+`ENVIRONMENT` (telemetry's `deployment.environment.name`; the chart sets it).
 `cmd/mcp`: `DATABASE_URL`, `MFC_LAYOUT_FILE`; `MCP_ADDR` (`:8090`). `cmd/a2a`: `DATABASE_URL`, `MFC_LAYOUT_FILE`,
 `A2A_AGENT_URL`; `A2A_ADDR` (`:8093`). Run asrs-control and amr-fleet-control (and the equipment emulator) beside it.
 

@@ -1,0 +1,4 @@
+database:
+  url: postgres://u@example.invalid:5432/mfc
+kafka:
+  brokers: kafka.example.invalid:9092

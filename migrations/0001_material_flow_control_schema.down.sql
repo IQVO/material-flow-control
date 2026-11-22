@@ -1,0 +1,13 @@
+DROP TABLE IF EXISTS idempotency_keys;
+DROP TABLE IF EXISTS outbox_events;
+DROP TABLE IF EXISTS processed_events;
+DROP TABLE IF EXISTS subsystem_commands;
+DROP TABLE IF EXISTS equipment_units;
+DROP TABLE IF EXISTS subsystem_capacities;
+DROP TABLE IF EXISTS station_queues;
+DROP TABLE IF EXISTS container_moves;
+DROP TABLE IF EXISTS container_tracks;
+DROP TABLE IF EXISTS transport_legs;
+DROP TABLE IF EXISTS transport_orders;
+DROP TABLE IF EXISTS transport_requests;
+DROP TABLE IF EXISTS flow_lock;

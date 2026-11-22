@@ -1,0 +1,420 @@
+[
+  {
+    "_meta": {
+      "com.warehouse/authority": "L1"
+    },
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read where a container physically is (IN_ASRS, AT_PORT, ON_ROBOT with the robot, AT_STATION, AT_HANDOFF, AT_CLARIFICATION, UNKNOWN), its active transport and its clarification reason. Read-only; an unknown container fails with container-track-not-found.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "containerId": {
+          "description": "the container id (LPN), e.g. TOTE-1",
+          "type": "string"
+        }
+      },
+      "required": [
+        "containerId"
+      ],
+      "type": "object"
+    },
+    "name": "get_container_track",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "active_transport_request_id": {
+          "type": "string"
+        },
+        "clarification_reason": {
+          "type": "string"
+        },
+        "container_id": {
+          "type": "string"
+        },
+        "moves": {
+          "type": "integer"
+        },
+        "position": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "robot": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "container_id",
+        "position",
+        "updated_at",
+        "moves"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "com.warehouse/authority": "L1"
+    },
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read a goods-to-person station queue: buffer limit, the containers occupying it in position order and the containers waiting upstream in admission order (priority, then due time). Read-only; an unknown station fails with station-not-found.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "stationId": {
+          "description": "the goods-to-person station id of the layout, e.g. ST1",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stationId"
+      ],
+      "type": "object"
+    },
+    "name": "get_station",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "buffer_limit": {
+          "type": "integer"
+        },
+        "occupants": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "occupied": {
+          "type": "integer"
+        },
+        "station_id": {
+          "type": "string"
+        },
+        "waiting": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "station_id",
+        "buffer_limit",
+        "occupied",
+        "occupants",
+        "waiting"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "com.warehouse/authority": "L1"
+    },
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read one transport request: status (IN_PROGRESS, CANCEL_REQUESTED, COMPLETED, FAILED, REJECTED), reason, the container's last confirmed location, and every leg with its subsystem, kind (RETRIEVE, MOVE, STORE), status, the subsystem's job or leg id and the robot. Read-only; an unknown id fails with transport-request-not-found.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "transportRequestId": {
+          "description": "the WES transport_request_id, e.g. task-1.1",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transportRequestId"
+      ],
+      "type": "object"
+    },
+    "name": "get_transport",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_at": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "container_id": {
+          "type": "string"
+        },
+        "container_location": {
+          "type": "string"
+        },
+        "ended_at": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "legs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "attempt": {
+                "type": "integer"
+              },
+              "from": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "reference": {
+                "type": "string"
+              },
+              "robot": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              },
+              "subsystem": {
+                "type": "string"
+              },
+              "subsystem_id": {
+                "type": "string"
+              },
+              "subsystem_ref": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "seq",
+              "attempt",
+              "reference",
+              "subsystem",
+              "subsystem_id",
+              "kind",
+              "status"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "legs_done": {
+          "type": "integer"
+        },
+        "legs_total": {
+          "type": "integer"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "retries": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        },
+        "subsystem_reason": {
+          "type": "string"
+        },
+        "transport_order_id": {
+          "type": "string"
+        },
+        "transport_request_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "transport_request_id",
+        "container_id",
+        "purpose",
+        "status",
+        "legs_total",
+        "legs_done",
+        "retries",
+        "legs"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "com.warehouse/authority": "L1"
+    },
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List the last reported state of every shuttle-and-lift unit of one AS/RS (IDLE, EXECUTE, HELD), as asrs-control's EquipmentStateChanged reported it. Read-only; an AS/RS the layout does not name fails with asrs-not-found.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "asrsId": {
+          "description": "the AS/RS id of the layout, e.g. ASRS1",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asrsId"
+      ],
+      "type": "object"
+    },
+    "name": "list_equipment_units",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "asrs_id": {
+          "type": "string"
+        },
+        "units": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "aisle": {
+                "type": "integer"
+              },
+              "changed_at": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "unit_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "unit_id",
+              "aisle",
+              "state",
+              "changed_at"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "asrs_id",
+        "units"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "com.warehouse/authority": "L1"
+    },
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List the capacity of the AMR fleet, the AS/RS and every station as SubsystemCapacityChanged publishes it (status, units total and available, open work, capacity per hour, queue depth). Read-only.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "list_subsystems",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "subsystems": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capacity_per_hour": {
+                "type": "integer"
+              },
+              "measured_at": {
+                "type": "string"
+              },
+              "open_work": {
+                "type": "integer"
+              },
+              "queue_depth": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              },
+              "subsystem_id": {
+                "type": "string"
+              },
+              "subsystem_kind": {
+                "type": "string"
+              },
+              "units_available": {
+                "type": "integer"
+              },
+              "units_total": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "subsystem_kind",
+              "subsystem_id",
+              "status",
+              "units_total",
+              "units_available",
+              "open_work",
+              "capacity_per_hour",
+              "queue_depth",
+              "measured_at"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "subsystems"
+      ],
+      "type": "object"
+    }
+  }
+]

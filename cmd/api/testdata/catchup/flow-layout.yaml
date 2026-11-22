@@ -1,0 +1,20 @@
+# The catch-up test's own layout (ruling P4-R20): AS/RS ASRS9 and fleet AMR9, so its backlog never meets the e2e
+# test's subsystems (ASRS1/AMR1) on the shared topics: each layout skips the other's facts as an unknown subsystem.
+# Example codes; a deployed layout uses the site's real facility-layout location codes.
+siteId: WH1
+fleet:
+  fleetId: AMR9
+  legsPerRobotHour: 30
+asrs:
+  - asrsId: ASRS9
+    locationCode: WH1-AUTO-ASRS-ASRS9-00-00-S
+    retrievalsPerUnitHour: 60
+    ports:
+      - {portId: IN1, kind: INPUT, locationCode: WH1-AUTO-ASRS-ASRS9-01-00-IN1, handoffPointId: ASRS9-IN1}
+      - {portId: OUT1, kind: OUTPUT, locationCode: WH1-AUTO-ASRS-ASRS9-01-00-OUT1, handoffPointId: ASRS9-OUT1}
+stations:
+  - {stationId: ST9, locationCode: WH1-GTP-ST9, handoffPointId: ST9, bufferLimit: 2}
+handoffs:
+  - {locationCode: WH1-PCK-PK9, handoffPointId: PK9, kind: PACK}
+clarificationPoints:
+  - {locationCode: WH1-CLR-CLR9, handoffPointId: CLR9}

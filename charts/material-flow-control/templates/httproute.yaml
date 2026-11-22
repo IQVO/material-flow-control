@@ -1,0 +1,33 @@
+{{- if .Values.gatewayApi.enabled -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "material-flow-control.fullname" . }}
+  labels:
+    {{- include "material-flow-control.labels" . | nindent 4 }}
+  {{- with include "material-flow-control.kongPluginNames" . }}
+  annotations:
+    konghq.com/plugins: {{ . | quote }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- include "material-flow-control.parentRefs" .Values.gatewayApi.parentRefs | trim | nindent 4 }}
+  rules:
+    {{- range .Values.gatewayApi.hosts }}
+    - matches:
+        - path:
+            type: {{ .pathType | default "PathPrefix" }}
+            value: {{ .path }}
+      {{- if $.Values.gatewayApi.stripPath }}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      {{- end }}
+      backendRefs:
+        - name: {{ include "material-flow-control.fullname" $ }}
+          port: {{ $.Values.service.port }}
+    {{- end }}
+{{- end }}

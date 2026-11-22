@@ -1,0 +1,19 @@
+{{- if .Values.a2a.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "material-flow-control.a2aFullname" . }}
+  labels:
+    {{- include "material-flow-control.labels" . | nindent 4 }}
+    app.kubernetes.io/component: a2a
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ include "material-flow-control.port" .Values.a2a.addr }}
+      targetPort: {{ ternary "a2a" "http" (eq (include "material-flow-control.agentsColocated" .) "true") }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "material-flow-control.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ ternary "agents" "a2a" (eq (include "material-flow-control.agentsColocated" .) "true") }}
+{{- end }}

@@ -1,0 +1,126 @@
+# material-flow-control: the api Deployment (REST :8080, the two subsystem fact consumers, the command dispatcher,
+# the outbox relay), optional read-only mcp (:8090) and a2a (:8093) Deployments, a ConfigMap (env +
+# flow-layout.yaml), a Secret for the database, and default-off Gateway API routes with their Kong plugins.
+# Postgres, Kafka and both subsystem URLs are mandatory; the chart refuses to render without them.
+# Exactly ONE api replica (D19): the chart refuses any other value.
+replicaCount: 1
+image:
+  repository: ghcr.io/iqvo/material-flow-control
+  pullPolicy: IfNotPresent
+  tag: ""
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+# carry (Task 15 review): the worst shutdown is the 10 s HTTP drain overlapping the consumers' close and one relay
+# pass (Kafka writes: 10 s timeouts, 2 attempts), about 30 s; 45 adds a margin. The chart refuses less than 30.
+terminationGracePeriodSeconds: 45
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+database:
+  url: ""
+  existingSecret: ""
+  existingSecretKey: "DATABASE_URL"
+  migrationsExistingSecretKey: "MIGRATIONS_DATABASE_URL"
+kafka:
+  brokers: ""
+  asrsConsumerGroup: material-flow-control.asrs-control-events
+  amrConsumerGroup: material-flow-control.amr-fleet-control-events
+subsystems:
+  asrsControlUrl: http://asrs-control.warehouse-systems.svc.cluster.local
+  amrFleetControlUrl: http://amr-fleet-control.warehouse-systems.svc.cluster.local
+  timeoutMs: 5000
+config:
+  addr: ":8080"
+  logLevel: info
+  layoutFile: /etc/material-flow-control/flow-layout.yaml
+  outboxIntervalMs: 250
+  outboxBatch: 100
+  outboxMaxAttempts: 20
+  legRetryLimit: 2
+  legRequestDeadlineSeconds: 300
+  legTimeoutSeconds: 900
+  dispatchPollMs: 200
+  tickIntervalMs: 1000
+# The material-flow layout (ADR 0002). Empty = the chart's files/flow-layout.yaml (a copy of
+# config/flow-layout.example.yaml, kept equal by the render test). carry (ruling P4-R4): that file holds EXAMPLE
+# place codes; a deployed layout uses the site's real facility-layout location codes.
+layout: ""
+# ruling P4-R18: ENVIRONMENT, deployment.environment.name on every span and metric of api, mcp and a2a (the
+# binaries default to "local"). asrs-control's key and default.
+environment: "production"
+otel:
+  enabled: false
+  endpoint: ""
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {memory: 256Mi}
+mcp:
+  enabled: false
+  addr: ":8090"
+  replicaCount: 1
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {memory: 128Mi}
+  route:
+    enabled: false
+    path: /api/mcp/material-flow-control
+    # Empty = gatewayApi.parentRefs. warehouse-infra's _platform.yaml supplies the shared Gateway here.
+    parentRefs: []
+a2a:
+  enabled: false
+  addr: ":8093"
+  replicaCount: 1
+  agentUrl: ""
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {memory: 128Mi}
+  route:
+    enabled: false
+    path: /api/a2a/material-flow-control
+    # Empty = gatewayApi.parentRefs. warehouse-infra's _platform.yaml supplies the shared Gateway here.
+    parentRefs: []
+# capacity step 3 (warehouse-infra ADR 0012): true (with mcp.enabled and a2a.enabled) runs cmd/mcp and cmd/a2a as
+# two containers of one <release>-agents Deployment. Off by default; warehouse-infra switches it on.
+agents:
+  colocate: false
+  strategy: {}   # {} = k8s default (RollingUpdate); {type: Recreate} only when no surge slot is free
+gatewayApi:
+  enabled: false
+  parentRefs: []
+  hosts:
+    - path: /api/material-flow-control
+      pathType: PathPrefix
+  stripPath: true
+# Namespace-scoped KongPlugins attached to every HTTPRoute of this chart through konghq.com/plugins. All off by
+# default; warehouse-infra's values switch them on and its _platform.yaml supplies cors.origin and
+# opentelemetry.tracesEndpoint (the keys every sibling chart reads). The chart refuses an enabled cors without an
+# origin (or with "*") and an enabled opentelemetry without a traces endpoint. No credential plugin, ever.
+kongPlugins:
+  cors:
+    enabled: false
+    # The exact web origin, never "*".
+    origin: ""
+    # Further exact origins, granted after origin.
+    origins: []
+  opentelemetry:
+    enabled: false
+    tracesEndpoint: ""
+  prometheus:
+    enabled: false

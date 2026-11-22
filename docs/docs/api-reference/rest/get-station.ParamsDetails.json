@@ -1,0 +1,1 @@
+{"parameters":[{"name":"stationId","in":"path","required":true,"description":"A goods-to-person station id of the layout.","schema":{"type":"string","minLength":1,"maxLength":128,"description":"No control characters.","title":"Id"}}]}

@@ -1,0 +1,66 @@
+package usecases
+
+import (
+	"context"
+	"time"
+
+	"github.com/IQVO/material-flow-control/internal/application/command"
+	"github.com/IQVO/material-flow-control/internal/domain/containertrack"
+	"github.com/IQVO/material-flow-control/internal/domain/transportorder"
+)
+
+// stale reports an order whose current leg, accepted by its subsystem, showed no progress for timeout.
+func stale(o *transportorder.Order, now time.Time, timeout time.Duration) bool {
+	cur, ok := o.Current()
+	if !ok {
+		return false
+	}
+	switch cur.Status {
+	case transportorder.LegRequested, transportorder.LegAssigned, transportorder.LegPickedUp:
+		return now.Sub(cur.UpdatedAt) >= timeout
+	}
+	return false
+}
+
+// Tick fails every stale transport TIMEOUT and queues the best-effort cancellation of its leg (decision D16).
+func (s *Service) Tick(ctx context.Context) (int, error) {
+	open, err := s.d.Orders.Open(ctx)
+	if err != nil {
+		return 0, err
+	}
+	now, n := s.now(), 0
+	for _, o := range open {
+		if !stale(o, now, s.cfg.LegTimeout) {
+			continue
+		}
+		err := s.write(ctx, func(ctx context.Context) error {
+			f := s.newFlow(ctx)
+			fresh, err := f.orderByID(o.ID())
+			if err != nil || !stale(fresh, f.now, s.cfg.LegTimeout) {
+				return err
+			}
+			if err := timeOut(f, fresh); err != nil {
+				return err
+			}
+			n++
+			return f.commit()
+		})
+		if err != nil {
+			return n, err
+		}
+	}
+	return n, nil
+}
+
+// timeOut queues the best-effort cancellation of the stale leg and fails the transport TIMEOUT. A leg that timed
+// out PICKED_UP failed with the container on the robot (decision D12): the container is also held
+// CONTAINER_ON_FAILED_ROBOT; an already-held one keeps its first hold (ruling P4-R5).
+// ruling P4-R9
+func timeOut(f *flow, o *transportorder.Order) error {
+	cur, _ := o.Current()
+	f.enqueue(o.ID(), cur.Ref, command.CancelLeg)
+	if cur.Status == transportorder.LegPickedUp {
+		return f.clarify(o, containertrack.Clarification{Reason: containertrack.ReasonOnFailedRobot}, cur.From, transportorder.FailTimeout, "LEG_TIMEOUT")
+	}
+	return f.fail(o, transportorder.FailTimeout, "LEG_TIMEOUT")
+}

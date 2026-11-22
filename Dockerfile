@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # --- build stage ---
-FROM golang:1.27-alpine@sha256:738d1cf061836894ff6bb8c33881080ac66de8cf0586615012a0c8f592649cfa AS build
+FROM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 WORKDIR /src
 
 # Cache go.mod/go.sum download separately from source so editing source
@@ -31,6 +31,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # --- runtime stage ---
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+# DL3018: the base image is pinned by digest; ca-certificates and tzdata stay unpinned on purpose so every
+# build takes the current security fixes (an exact apk version breaks the build once Alpine drops it).
+# hadolint ignore=DL3018
 RUN apk upgrade --no-cache && \
     apk add --no-cache ca-certificates tzdata && \
     addgroup -g 1000 -S app && adduser -u 1000 -S app -G app
@@ -40,7 +43,8 @@ WORKDIR /app
 # filesystem read-only. Logs go to stdout.
 COPY --from=build --chown=app:app /out/ ./
 USER 1000
-EXPOSE 8080
+# 8080 cmd/api (REST), 8090 cmd/mcp (MCP Streamable HTTP), 8093 cmd/a2a (A2A).
+EXPOSE 8080 8090 8093
 # cmd/api is the service's main binary (HTTP on :8080). Additional cmd/*
 # binaries are run by the chart with `command: ["/app/<dirname>"]`.
-ENTRYPOINT ["./api"]
+ENTRYPOINT ["/app/api"]

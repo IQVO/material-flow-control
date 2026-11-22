@@ -1,0 +1,18 @@
+robots:
+  - {manufacturer: EMU, serialNumber: R1, startX: 0, startY: 0, mapId: S1, speed: 1.5, drainPerMeter: 0.02, chargePerSecond: 0.5, actionSeconds: 2}
+  - {manufacturer: EMU, serialNumber: R2, startX: 2, startY: 0, mapId: S1, speed: 1.5, drainPerMeter: 0.02, chargePerSecond: 0.5, actionSeconds: 2}
+  - {manufacturer: EMU, serialNumber: R3, startX: 4, startY: 0, mapId: S1, speed: 1.5, drainPerMeter: 0.02, chargePerSecond: 0.5, actionSeconds: 2}
+asrs:
+  - id: ASRS1
+    aisles: 2
+    levels: 1
+    slots: 2
+    doubleDeep: true
+    baseSeconds: 1
+    perLevelSeconds: 0.2
+    perSlotSeconds: 0.2
+    ports:
+      - {id: IN1, aisle: 1, kind: INPUT, nodeId: ASRS1-IN1}
+      - {id: OUT1, aisle: 1, kind: OUTPUT, nodeId: ASRS1-OUT1}
+      - {id: IN2, aisle: 2, kind: INPUT, nodeId: ASRS1-IN2}
+      - {id: OUT2, aisle: 2, kind: OUTPUT, nodeId: ASRS1-OUT2}
