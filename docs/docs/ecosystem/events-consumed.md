@@ -56,6 +56,9 @@ AsyncAPI example of a consumed type decodes through the production handler.
 | --- | --- | --- |
 | `contracts/asrs-control.asyncapi.yaml` | `IQVO/asrs-control` `apis/asyncapi.yaml` | `b23a5a2624e1582101f0e62835547c4806bcfac8` |
 | `contracts/asrs-control.openapi.yaml` | `IQVO/asrs-control` `apis/openapi.yaml` | `b23a5a2624e1582101f0e62835547c4806bcfac8` |
+| `contracts/amr-fleet-control.asyncapi.yaml` | `IQVO/amr-fleet-control` `apis/asyncapi.yaml` | `09a8f1915be5129efbb240dd6730fec640f93635` |
+| `contracts/amr-fleet-control.openapi.yaml` | `IQVO/amr-fleet-control` `apis/openapi.yaml` | `09a8f1915be5129efbb240dd6730fec640f93635` |
 
-amr-fleet-control's two contracts are pinned once its plan merged; until then its fixtures
-(`internal/adapters/inbound/kafka/testdata/amr-fleet-control.examples.json`) follow its interface table.
+amr-fleet-control's two contracts were pinned after its plan merged (`09a8f19`). Every pinned example of the five
+consumed types decodes through the production handler, and every field the consumer decodes exists in the pinned
+schema.

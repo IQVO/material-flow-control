@@ -30,7 +30,7 @@ RETRYABLE refusals (retried under the same key): `unknown-container`, `container
 ## amr-fleet-control (relationship 4)
 
 Base `AMR_FLEET_CONTROL_URL` (in-cluster `http://amr-fleet-control.warehouse-systems.svc.cluster.local`), contract:
-plan 03's relationship-4 table (pinned under `contracts/` once it merged).
+`contracts/amr-fleet-control.openapi.yaml`, pinned from `IQVO/amr-fleet-control` `develop` at `09a8f19`.
 
 | Command | Call | Success |
 | --- | --- | --- |
@@ -38,7 +38,8 @@ plan 03's relationship-4 table (pinned under `contracts/` once it merged).
 | `CANCEL_LEG` | `POST /fleets/{fleetId}/legs/{legId}/cancellation` | `200` / `202` |
 
 RETRYABLE refusals: `handoff-unreachable`, `container-busy`, `fleet-unavailable`, `leg-not-cancellable`, `leg-ended`,
-`unknown-handoff-point`, `fleet-not-found`, `robot-not-found` (plan 03 ruling P3-R13).
+`unknown-handoff-point`, `fleet-not-found`, `robot-not-found` (plan 03 ruling P3-R13). A test holds `amr.Retryable`
+equal to the RETRYABLE list of the pinned OpenAPI's `info.description`.
 
 ## How an answer is classified (decision D14)
 
@@ -46,7 +47,7 @@ RETRYABLE refusals: `handoff-unreachable`, `container-busy`, `fleet-unavailable`
 | --- | --- |
 | `2xx` with the subsystem's id | the id is recorded on the leg (for cancellation) |
 | a RETRYABLE refusal, a `5xx`, `408`, `425`, `429`, a timeout (`SUBSYSTEM_TIMEOUT_MS`), a refused connection, a `2xx` without the id, or a `3xx` (never followed: a redirected POST would become a GET) | retried under the SAME key, backoff 1 s to 30 s, until `LEG_REQUEST_DEADLINE_SECONDS` after the first attempt; then the transport fails `SUBSYSTEM_FAULT` |
-| any other refusal (FINAL: `bad-request`, `invalid-parameter`, `asrs-not-found`, `unknown-port`, `wrong-port-kind`, `idempotency-key-reused`) | the transport fails `SUBSYSTEM_FAULT` at once and an ERROR is logged: the layout disagrees with the subsystem |
+| any other refusal (FINAL: `bad-request`, `invalid-parameter`, `asrs-not-found`, `leg-not-found`, `unknown-port`, `wrong-port-kind`, `idempotency-key-reused`) | the transport fails `SUBSYSTEM_FAULT` at once and an ERROR is logged: the layout disagrees with the subsystem |
 
 A problem with a `type` but no `code` takes its code from the type URI's last segment.
 

@@ -75,22 +75,43 @@ func replay(t *testing.T, doc map[string]any, handlers map[string]HandlerFunc) m
 	return seen
 }
 
-// dataFields lists the data property names of the schema of one consumed event.
-func dataFields(t *testing.T, doc map[string]any, schema string) []string {
+// dataSchema returns the `data` schema of one consumed event: inline (asrs-control) or a local
+// `#/components/schemas/<Name>` $ref (amr-fleet-control).
+// deviation (Task 24 D1): amr-fleet-control's pinned events reference their data schema instead of inlining it.
+func dataSchema(t *testing.T, doc map[string]any, schema string) map[string]any {
 	t.Helper()
 	parts, _ := get(doc, "components", "schemas", schema, "allOf").([]any)
 	for _, p := range parts {
-		if props, ok := get(p, "properties", "data", "properties").(map[string]any); ok {
-			var out []string
-			for k := range props {
-				out = append(out, k)
+		data, ok := get(p, "properties", "data").(map[string]any)
+		if !ok {
+			continue
+		}
+		if ref, ok := data["$ref"].(string); ok {
+			name, found := strings.CutPrefix(ref, "#/components/schemas/")
+			resolved, isMap := get(doc, "components", "schemas", name).(map[string]any)
+			if !found || !isMap {
+				t.Fatalf("schema %s: data $ref %q does not resolve", schema, ref)
 			}
-			sort.Strings(out)
-			return out
+			data = resolved
+		}
+		if _, ok := data["properties"].(map[string]any); ok {
+			return data
 		}
 	}
 	t.Fatalf("schema %s has no data properties", schema)
 	return nil
+}
+
+// dataFields lists the data property names of the schema of one consumed event.
+func dataFields(t *testing.T, doc map[string]any, schema string) []string {
+	t.Helper()
+	props, _ := dataSchema(t, doc, schema)["properties"].(map[string]any)
+	var out []string
+	for k := range props {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // jsonFields lists the json names a payload struct decodes (nested structs by their own name only).
