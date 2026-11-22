@@ -6,28 +6,28 @@
       "repo": "IQVO/asrs-control",
       "path": "apis/asyncapi.yaml",
       "ref": "develop",
-      "pinned_commit": "b23a5a2624e1582101f0e62835547c4806bcfac8"
+      "pinned_commit": "1e8067758e4f3e3f1de9da4905b0a884efa89b7a"
     },
     {
       "local": "contracts/asrs-control.openapi.yaml",
       "repo": "IQVO/asrs-control",
       "path": "apis/openapi.yaml",
       "ref": "develop",
-      "pinned_commit": "b23a5a2624e1582101f0e62835547c4806bcfac8"
+      "pinned_commit": "1e8067758e4f3e3f1de9da4905b0a884efa89b7a"
     },
     {
       "local": "contracts/amr-fleet-control.asyncapi.yaml",
       "repo": "IQVO/amr-fleet-control",
       "path": "apis/asyncapi.yaml",
       "ref": "develop",
-      "pinned_commit": "09a8f1915be5129efbb240dd6730fec640f93635"
+      "pinned_commit": "1a3c7a2dca037eaaa20efb202ddc6439f4b7d992"
     },
     {
       "local": "contracts/amr-fleet-control.openapi.yaml",
       "repo": "IQVO/amr-fleet-control",
       "path": "apis/openapi.yaml",
       "ref": "develop",
-      "pinned_commit": "09a8f1915be5129efbb240dd6730fec640f93635"
+      "pinned_commit": "1a3c7a2dca037eaaa20efb202ddc6439f4b7d992"
     }
   ]
 }
