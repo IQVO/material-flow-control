@@ -34,7 +34,7 @@ servers:
     host: kafka.warehouse-systems.svc.cluster.local:9092
     protocol: kafka
 channels:
-  events:
+  materialFlowControlEvents:
     address: warehouse.material-flow-control.events
     description: The integration stream (fulfillment-execution, wes-work-planning, exception-management consume it).
     messages:
@@ -45,7 +45,7 @@ channels:
       TransportFailed: {$ref: '#/components/messages/TransportFailed'}
       ContainerSentToClarification: {$ref: '#/components/messages/ContainerSentToClarification'}
       SubsystemCapacityChanged: {$ref: '#/components/messages/SubsystemCapacityChanged'}
-  analytics:
+  materialFlowControlAnalytics:
     address: warehouse.material-flow-control.analytics
     description: The analytics twin of every event (same id; dataschema urn:warehouse:material-flow-control:analytics:<EventName>:v1).
     messages:
@@ -75,13 +75,13 @@ channels:
       ConsumedLegFailed: {$ref: '#/components/messages/ConsumedLegFailed'}
       ConsumedFleetCapacityChanged: {$ref: '#/components/messages/ConsumedFleetCapacityChanged'}
 operations:
-  publishTransportRejected: {action: send, description: 'A transport request was refused at once (UNKNOWN_CONTAINER, CONTAINER_BUSY, DESTINATION_UNREACHABLE, SUBSYSTEM_UNAVAILABLE); written with the stored 422 answer.', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/TransportRejected'}]}
-  publishTransportAccepted: {action: send, description: 'A transport request was accepted and its transport order created; the first leg is requested after commit.', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/TransportAccepted'}]}
-  publishContainerArrivedAtStation: {action: send, description: 'A container bound for a goods-to-person station was admitted under the station buffer limit.', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/ContainerArrivedAtStation'}]}
-  publishTransportCompleted: {action: send, description: 'A transport order reached its destination.', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/TransportCompleted'}]}
-  publishTransportFailed: {action: send, description: 'A transport order ended without reaching its destination, with a reason code.', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/TransportFailed'}]}
-  publishContainerSentToClarification: {action: send, description: 'A container was held at clarification (no read, mismatch, not at source or port, storage map mismatch, on a failed robot).', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/ContainerSentToClarification'}]}
-  publishSubsystemCapacityChanged: {action: send, description: 'A subsystem or station capacity snapshot changed (published on change, never periodically).', channel: {$ref: '#/channels/events'}, messages: [{$ref: '#/channels/events/messages/SubsystemCapacityChanged'}]}
+  publishTransportRejected: {action: send, description: 'A transport request was refused at once (UNKNOWN_CONTAINER, CONTAINER_BUSY, DESTINATION_UNREACHABLE, SUBSYSTEM_UNAVAILABLE); written with the stored 422 answer.', channel: {$ref: '#/channels/materialFlowControlEvents'}, messages: [{$ref: '#/channels/materialFlowControlEvents/messages/TransportRejected'}]}
+  publishTransportAccepted: {action: send, description: 'A transport request was accepted and its transport order created; the first leg is requested after commit.', channel: {$ref: '#/channels/materialFlowControlEvents'}, messages: [{$ref: '#/channels/materialFlowControlEvents/messages/TransportAccepted'}]}
+  publishContainerArrivedAtStation: {action: send, description: 'A container bound for a goods-to-person station was admitted under the station buffer limit.', channel: {$ref: '#/channels/materialFlowControlEvents'}, messages: [{$ref: '#/channels/materialFlowControlEvents/messages/ContainerArrivedAtStation'}]}
+  publishTransportCompleted: {action: send, description: 'A transport order reached its destination.', channel: {$ref: '#/channels/materialFlowControlEvents'}, messages: [{$ref: '#/channels/materialFlowControlEvents/messages/TransportCompleted'}]}
+  publishTransportFailed: {action: send, description: 'A transport order ended without reaching its destination, with a reason code.', channel: {$ref: '#/channels/materialFlowControlEvents'}, messages: [{$ref: '#/channels/materialFlowControlEvents/messages/TransportFailed'}]}
+  publishContainerSentToClarification: {action: send, description: 'A container was held at clarification (no read, mismatch, not at source or port, storage map mismatch, on a failed robot).', channel: {$ref: '#/channels/materialFlowControlEvents'}, messages: [{$ref: '#/channels/materialFlowControlEvents/messages/ContainerSentToClarification'}]}
+  publishSubsystemCapacityChanged: {action: send, description: 'A subsystem or station capacity snapshot changed (published on change, never periodically).', channel: {$ref: '#/channels/materialFlowControlEvents'}, messages: [{$ref: '#/channels/materialFlowControlEvents/messages/SubsystemCapacityChanged'}]}
   receiveAsrsControlEvents: {action: receive, description: 'The five asrs-control facts that confirm or fail an AS/RS leg and feed the routing and capacity views; inbox claim and effect in one unit of work, bounded retry then warehouse.asrs-control.events.dlq.', channel: {$ref: '#/channels/asrsControlEvents'}, messages: [{$ref: '#/channels/asrsControlEvents/messages/ConsumedContainerStored'}, {$ref: '#/channels/asrsControlEvents/messages/ConsumedContainerPresentedAtPort'}, {$ref: '#/channels/asrsControlEvents/messages/ConsumedStorageJobFailed'}, {$ref: '#/channels/asrsControlEvents/messages/ConsumedEquipmentStateChanged'}, {$ref: '#/channels/asrsControlEvents/messages/ConsumedAsrsCapacityChanged'}]}
   receiveAmrFleetControlEvents: {action: receive, description: 'The five amr-fleet-control facts that confirm or fail an AMR leg and feed the capacity view; inbox claim and effect in one unit of work, bounded retry then warehouse.amr-fleet-control.events.dlq.', channel: {$ref: '#/channels/amrFleetControlEvents'}, messages: [{$ref: '#/channels/amrFleetControlEvents/messages/ConsumedLegAssigned'}, {$ref: '#/channels/amrFleetControlEvents/messages/ConsumedContainerPickedUp'}, {$ref: '#/channels/amrFleetControlEvents/messages/ConsumedLegCompleted'}, {$ref: '#/channels/amrFleetControlEvents/messages/ConsumedLegFailed'}, {$ref: '#/channels/amrFleetControlEvents/messages/ConsumedFleetCapacityChanged'}]}
 components:
