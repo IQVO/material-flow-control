@@ -78,14 +78,21 @@ func checkID(field, v string) error {
 	return nil
 }
 
-// lpnChar is the inventory-storage LPN alphabet (plan 05a D1: ^[A-Za-z0-9._-]{1,64}$).
-func lpnChar(r rune) bool {
-	return r < unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '_' || r == '-')
+// lpnChar is the inventory-storage LPN alphabet (plan 05a D1: ^[A-Za-z0-9._-]{1,64}$), byte by byte: every byte of a
+// non-ASCII rune is >= 0x80 and so outside it. Spelled as the regexp's ranges (Task 26 mutation work: the former
+// `r < unicode.MaxASCII` guard had an equivalent boundary mutant, DEL being no letter or digit); same alphabet.
+func lpnChar(c byte) bool {
+	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || c == '.' || c == '_' || c == '-'
 }
 
 func checkContainer(v string) error {
-	if v == "" || len(v) > maxContainerLen || strings.IndexFunc(v, func(r rune) bool { return !lpnChar(r) }) >= 0 {
+	if v == "" || len(v) > maxContainerLen {
 		return invalid("container_id", "must match ^[A-Za-z0-9._-]{1,64}$")
+	}
+	for i := range len(v) {
+		if !lpnChar(v[i]) {
+			return invalid("container_id", "must match ^[A-Za-z0-9._-]{1,64}$")
+		}
 	}
 	return nil
 }
