@@ -67,15 +67,26 @@ func TestTheEightAcceptanceRowsAgainstTheRealSubsystems(t *testing.T) {
 	pick, repl, busy := f.goodsToPersonIdempotencyAndRejection()
 	f.completed("pick", pick, 60*time.Second)
 	f.completed("replenishment", repl, 90*time.Second)
+	f.at(f.id("TOTE-2"), "AT_HANDOFF", "WH1-FWD-FWD1") // carry (Task 25 review)
 	f.idempotency(pick)
 	f.rejection(busy)
 	// Goods-to-person, second half: the RETURN of the picked container stores it again.
 	f.completed("return", f.accept(f.id("ret-1"), f.id("TOTE-1"), "ST1", asrsLoc, "RETURN"), 90*time.Second)
+	f.at(f.id("TOTE-1"), "IN_ASRS", asrsLoc) // carry (Task 25 review)
 	// Outbound: from the forward area to the pack station.
 	f.completed("outbound", f.accept(f.id("out-1"), f.id("TOTE-2"), "WH1-FWD-FWD1", "WH1-PCK-PK1", "OUTBOUND"), 90*time.Second)
+	f.at(f.id("TOTE-2"), "AT_HANDOFF", "WH1-PCK-PK1") // carry (Task 25 review)
 	f.clarification()
 	f.capacityLoop()
 	f.oneOutcomeEach()
+}
+
+// at: the container's track is at kind/code within 10 s of its order's outcome (the codes are the flow layout's:
+// testdata/e2e/flow-layout.yaml, the AS/RS WH1-AUTO-ASRS-ASRS1-00-00-S, the handoffs WH1-FWD-FWD1 and WH1-PCK-PK1).
+// carry (Task 25 review)
+func (f *floor) at(container, kind, code string) {
+	f.t.Helper()
+	f.track(container, 10*time.Second, func(p map[string]any) bool { return p["kind"] == kind && p["code"] == code })
 }
 
 // oneOutcomeEach: after a short settle, ONE read of this run's facts up to the end offset; every order this run
@@ -101,7 +112,7 @@ func (f *floor) putaway() {
 	for _, c := range []string{"TOTE-1", "TOTE-2", "TOTE-3"} {
 		order := f.accept(f.id("put-"+c), f.id(c), decant, asrsLoc, "PUTAWAY")
 		f.completed("putaway "+c, order, 60*time.Second)
-		f.track(f.id(c), 10*time.Second, func(p map[string]any) bool { return p["kind"] == "IN_ASRS" })
+		f.at(f.id(c), "IN_ASRS", asrsLoc)
 	}
 }
 
