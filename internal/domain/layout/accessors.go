@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"slices"
 	"sort"
 	"strings"
 )
@@ -82,7 +83,8 @@ func (l *Layout) Stations() []Station {
 	for _, st := range l.stations {
 		out = append(out, st)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].StationID < out[j].StationID })
+	// Unique station ids: a comparison with no operator to mutate (Task 26 mutation work, behaviour unchanged).
+	slices.SortFunc(out, func(a, b Station) int { return strings.Compare(a.StationID, b.StationID) })
 	return out
 }
 

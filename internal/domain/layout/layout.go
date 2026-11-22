@@ -103,9 +103,9 @@ func invalid(format string, args ...any) error {
 // surrounding whitespace would never match a request or a fact. checkTrimmed refuses one, naming the entry and
 // field; fields holds name, value pairs. A value that is only whitespace is left to the "required" checks.
 func checkTrimmed(entry string, fields ...string) error {
-	for i := 0; i+1 < len(fields); i += 2 {
-		if v := fields[i+1]; !blank(v) && v != strings.TrimSpace(v) {
-			return invalid("%s: %s %q has surrounding whitespace", entry, fields[i], v)
+	for i := 1; i < len(fields); i += 2 { // fields comes in name, value pairs: fields[i] is the value of fields[i-1]
+		if v := fields[i]; !blank(v) && v != strings.TrimSpace(v) {
+			return invalid("%s: %s %q has surrounding whitespace", entry, fields[i-1], v)
 		}
 	}
 	return nil
@@ -213,18 +213,16 @@ func (l *Layout) addAsrs(i int, a Asrs) error {
 	if err := l.addRef(a.LocationCode, Place{Kind: PlaceAsrs, Code: a.LocationCode, AsrsID: a.AsrsID}); err != nil {
 		return err
 	}
-	in, out := 0, 0
+	// The port kinds seen (addPort admits only INPUT and OUTPUT): one set checked for both kinds, so no branch
+	// swaps two symmetric counters (Task 26 mutation work, behaviour unchanged).
+	kinds := map[PortKind]bool{}
 	for j, p := range a.Ports {
 		if err := l.addPort(a.AsrsID, j, p); err != nil {
 			return err
 		}
-		if p.Kind == PortInput {
-			in++
-		} else {
-			out++
-		}
+		kinds[p.Kind] = true
 	}
-	if in == 0 || out == 0 {
+	if !kinds[PortInput] || !kinds[PortOutput] {
 		return invalid("AS/RS %s needs at least one INPUT and one OUTPUT port", a.AsrsID)
 	}
 	l.asrs[a.AsrsID] = a
