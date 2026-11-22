@@ -10,10 +10,10 @@ spec:
   type: ClusterIP
   ports:
     - port: {{ include "material-flow-control.port" .Values.mcp.addr }}
-      targetPort: http
+      targetPort: {{ ternary "mcp" "http" (eq (include "material-flow-control.agentsColocated" .) "true") }}
       protocol: TCP
       name: http
   selector:
     {{- include "material-flow-control.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: mcp
+    app.kubernetes.io/component: {{ ternary "agents" "mcp" (eq (include "material-flow-control.agentsColocated" .) "true") }}
 {{- end }}

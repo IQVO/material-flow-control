@@ -96,6 +96,11 @@ a2a:
     path: /api/a2a/material-flow-control
     # Empty = gatewayApi.parentRefs. warehouse-infra's _platform.yaml supplies the shared Gateway here.
     parentRefs: []
+# capacity step 3 (warehouse-infra ADR 0012): true (with mcp.enabled and a2a.enabled) runs cmd/mcp and cmd/a2a as
+# two containers of one <release>-agents Deployment. Off by default; warehouse-infra switches it on.
+agents:
+  colocate: false
+  strategy: {}   # {} = k8s default (RollingUpdate); {type: Recreate} only when no surge slot is free
 gatewayApi:
   enabled: false
   parentRefs: []

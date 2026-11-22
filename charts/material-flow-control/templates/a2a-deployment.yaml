@@ -1,4 +1,4 @@
-{{- if .Values.a2a.enabled }}
+{{- if and .Values.a2a.enabled (not (include "material-flow-control.agentsColocated" .)) }}
 {{- include "material-flow-control.require" . }}
 apiVersion: apps/v1
 kind: Deployment
@@ -7,6 +7,9 @@ metadata:
   labels:
     {{- include "material-flow-control.labels" . | nindent 4 }}
     app.kubernetes.io/component: a2a
+  annotations:
+    # agents.colocate cutover (ADR 0012): ArgoCD prunes this Deployment only after <release>-agents serves.
+    argocd.argoproj.io/sync-options: PruneLast=true
 spec:
   replicas: {{ .Values.a2a.replicaCount }}
   selector:

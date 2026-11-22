@@ -10,10 +10,10 @@ spec:
   type: ClusterIP
   ports:
     - port: {{ include "material-flow-control.port" .Values.a2a.addr }}
-      targetPort: http
+      targetPort: {{ ternary "a2a" "http" (eq (include "material-flow-control.agentsColocated" .) "true") }}
       protocol: TCP
       name: http
   selector:
     {{- include "material-flow-control.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: a2a
+    app.kubernetes.io/component: {{ ternary "agents" "a2a" (eq (include "material-flow-control.agentsColocated" .) "true") }}
 {{- end }}

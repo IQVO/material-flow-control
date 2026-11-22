@@ -24,6 +24,15 @@
 {{- printf "%s-a2a" (include "material-flow-control.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{/* agents.colocate (warehouse-infra ADR 0012): "true" iff colocate, mcp and a2a are all on; else empty. */}}
+{{- define "material-flow-control.agentsColocated" -}}
+{{- if and (.Values.agents | default dict).colocate .Values.mcp.enabled .Values.a2a.enabled }}true{{ end -}}
+{{- end }}
+
+{{- define "material-flow-control.agentsFullname" -}}
+{{- printf "%s-agents" (include "material-flow-control.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
 {{- define "material-flow-control.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "material-flow-control.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}

@@ -100,9 +100,12 @@ requires `Idempotency-Key`; errors are `application/problem+json` with a `code`;
 a ConfigMap with the environment and `flow-layout.yaml`, a Secret for the database URL; default-off read-only mcp and
 a2a Deployments (their transactions are `BEGIN READ ONLY`), the Kong routes `/api/material-flow-control`,
 `/api/mcp/material-flow-control` and `/api/a2a/material-flow-control`, and the KongPlugins `cors`, `prometheus` and
-`opentelemetry`. Chart tests: `bash charts/material-flow-control/tests/render_test.sh`,
+`opentelemetry`. `agents.colocate` (default false; warehouse-infra ADR 0012) runs mcp and a2a as the two containers
+of one `material-flow-control-agents` Deployment when both are enabled; the `-mcp` / `-a2a` Services and routes keep
+their names. Chart tests: `bash charts/material-flow-control/tests/render_test.sh`,
 `python3 charts/material-flow-control/tests/test_service_selectors.py`,
-`python3 charts/material-flow-control/tests/test_kong_config.py` (helm and PyYAML). See
+`python3 charts/material-flow-control/tests/test_kong_config.py`,
+`python3 charts/material-flow-control/tests/test_agents_colocation.py` (helm and PyYAML). See
 [Deployment](docs/docs/operations/deployment.md).
 
 ## Local development
