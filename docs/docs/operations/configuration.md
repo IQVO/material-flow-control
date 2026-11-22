@@ -36,7 +36,7 @@ are trimmed of surrounding spaces; an empty value counts as unset.
 | `LEG_RETRY_LIMIT` | `2` | New leg attempts per order after a retryable AMR `LegFailed` (decision D13). Non-negative: `0` means never retry. |
 | `LEG_REQUEST_DEADLINE_SECONDS` | `300` | How long a leg request is retried under one Idempotency-Key before the transport fails `SUBSYSTEM_FAULT`. Positive integer. |
 | `LEG_TIMEOUT_SECONDS` | `900` | A leg the subsystem accepted with no progress fact for this long fails the transport `TIMEOUT`. Positive integer. |
-| `ORDER_RETENTION_HOURS` | `720` | How long an ended transport order (with its legs and its request record) and a REJECTED request record are kept ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)). At least `24`, the idempotency window a WES retries in: a smaller value is a boot error. |
+| `ORDER_RETENTION_HOURS` | `720` | How long an ended transport order (with its legs) is kept ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)); request records are never purged, and after the window the id answers `410 transport-request-expired`. At least `24`, the idempotency window a WES retries in: a smaller value is a boot error. |
 | `CONTAINER_MOVE_RETENTION_HOURS` | `720` | How long a container move is kept; a container's latest 20 moves (the track view) are always kept. Positive integer. |
 | `COMMAND_RETENTION_HOURS` | `720` | How long a `DONE` or `FAILED` subsystem command is kept (`PENDING` ones are never purged). Positive integer. |
 | `OUTBOX_RETENTION_HOURS` | `168` | How long a PUBLISHED outbox row is kept (unpublished rows are never purged). Positive integer. |

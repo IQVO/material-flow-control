@@ -114,16 +114,16 @@ window, in batches of `PURGE_BATCH` rows (one transaction each, repeated until t
 
 | Table | Purged | Window |
 | --- | --- | --- |
-| `transport_orders` (+ `transport_legs`, the order's `transport_requests` row) | `COMPLETED`/`FAILED` orders no pending command, container track or station queue still references | `ORDER_RETENTION_HOURS` (720) |
-| `transport_requests` | REJECTED records | `ORDER_RETENTION_HOURS` |
+| `transport_orders` (+ `transport_legs`) | `COMPLETED`/`FAILED` orders no pending command, container track or station queue still references | `ORDER_RETENTION_HOURS` (720) |
 | `container_moves` | moves beyond each container's latest 20, unless a live order moves the container | `CONTAINER_MOVE_RETENTION_HOURS` (720) |
 | `subsystem_commands` | `DONE`/`FAILED` commands of ended orders | `COMMAND_RETENTION_HOURS` (720) |
 | `outbox_events` | published rows | `OUTBOX_RETENTION_HOURS` (168) |
 | `idempotency_keys`, `processed_events` | every row | 24 hours, 30 days (fixed) |
 
 `material_flow_control.retention.purged{table}` counts the deleted rows; `purge failed` (WARN, `table`) names a pass
-that failed (the next hour retries it). After the window a transport is gone: `GET /transport-requests/{id}` answers
-`404 transport-request-not-found`. To find what the next pass will delete:
+that failed (the next hour retries it). `transport_requests` is never purged (ruling P4-R22): after the window the
+order is gone but its record stays, so `GET /transport-requests/{id}`, a retried POST and a cancellation answer
+`410 transport-request-expired`, and the id is never accepted again. To find what the next pass will delete:
 
 ```sql
 SELECT count(*) FROM transport_orders WHERE status IN ('COMPLETED', 'FAILED') AND updated_at < now() - interval '720 hours';

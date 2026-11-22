@@ -93,7 +93,7 @@ flowchart LR
 | Table | Holds |
 | --- | --- |
 | `flow_lock` | the one row every write unit of work locks first |
-| `transport_requests` | the ONE outcome of every `transport_request_id` (ACCEPTED or REJECTED; purged with its order, a REJECTED one after `ORDER_RETENTION_HOURS`) |
+| `transport_requests` | the ONE outcome of every `transport_request_id` (ACCEPTED or REJECTED); never purged (ruling P4-R22): an ACCEPTED record whose order was purged answers `410 transport-request-expired` |
 | `transport_orders` | the `TransportOrder` snapshot (JSONB) per order, in acceptance order (`seq`); an ended order is purged after `ORDER_RETENTION_HOURS` (30 days) |
 | `transport_legs` | leg reference to order, the key every subsystem fact is matched by |
 | `container_tracks` | the `ContainerTrack` snapshot per container (position, active order, clarification) |

@@ -86,9 +86,9 @@ requires `Idempotency-Key`; errors are `application/problem+json` with a `code`;
 
 | Method and path | Success | Refusals |
 | --- | --- | --- |
-| `POST /transport-requests` | `202` `TransportOrder` | `400` `bad-request` / `invalid-parameter`, `409` `transport-request-conflict`, `422` `unknown-container` / `container-busy` / `destination-unreachable` / `subsystem-unavailable` |
-| `GET /transport-requests/{transportRequestId}` | `200` `TransportOrder` | `400` `invalid-parameter`, `404` `transport-request-not-found` |
-| `POST /transport-requests/{transportRequestId}/cancellation` | `200` cancelled, `202` asked of the subsystem | `404` `transport-request-not-found`, `409` `transport-not-cancellable` / `transport-ended` |
+| `POST /transport-requests` | `202` `TransportOrder` | `400` `bad-request` / `invalid-parameter`, `409` `transport-request-conflict`, `410` `transport-request-expired`, `422` `unknown-container` / `container-busy` / `destination-unreachable` / `subsystem-unavailable` |
+| `GET /transport-requests/{transportRequestId}` | `200` `TransportOrder` | `400` `invalid-parameter`, `404` `transport-request-not-found`, `410` `transport-request-expired` |
+| `POST /transport-requests/{transportRequestId}/cancellation` | `200` cancelled, `202` asked of the subsystem | `404` `transport-request-not-found`, `410` `transport-request-expired`, `409` `transport-not-cancellable` / `transport-ended` |
 | `GET /container-tracks/{containerId}` | `200` `ContainerTrack` | `400` `invalid-parameter`, `404` `container-track-not-found` |
 | `POST /container-tracks/{containerId}/clarification-resolution` | `200` `ContainerTrack` | `400` `bad-request`, `404` `container-track-not-found`, `409` `not-in-clarification`, `422` `unknown-location` |
 | `GET /stations/{stationId}` | `200` `StationQueue` | `400` `invalid-parameter`, `404` `station-not-found` |
