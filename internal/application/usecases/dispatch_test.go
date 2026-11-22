@@ -93,9 +93,11 @@ func TestARetryableRefusalIsRetriedUnderTheSameKeyAndAFinalOneFailsAtOnce(t *tes
 
 	g := newEnv(t)
 	g.mustAccept("rq-1", "TOTE-1", "ST1", pack, tr.PurposeOutbound)
-	g.amr.Answer(&subsystem.Refusal{Status: 422, Code: "unknown-handoff-point"})
+	// carry (Task 20 review): bad-request is FINAL in both producer contracts; unknown-handoff-point is RETRYABLE since
+	// plan 03 ruling P3-R13, so the FINAL path is driven with bad-request.
+	g.amr.Answer(&subsystem.Refusal{Status: 400, Code: "bad-request"})
 	g.dispatch()
-	if f, _ := g.last().(transportorder.TransportFailed); f.Reason != transportorder.FailSubsystemFault || f.SubsystemReason != "unknown-handoff-point" {
+	if f, _ := g.last().(transportorder.TransportFailed); f.Reason != transportorder.FailSubsystemFault || f.SubsystemReason != "bad-request" {
 		t.Fatalf("final refusal = %+v", g.last())
 	}
 	if all := g.cmds.All(); all[0].Status != command.StatusFailed {
