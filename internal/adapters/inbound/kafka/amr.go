@@ -106,8 +106,12 @@ type legFailedData struct {
 func (d legFailedData) check() error {
 	return errors.Join(required("leg_id", d.LegID, "fleet_id", d.FleetID, "container_id", d.ContainerID, "failed_at", d.FailedAt,
 		"from_handoff_point_id", d.From, "to_handoff_point_id", d.To, "container_on_robot", d.ContainerOnRobot), d.Robot.check(false),
-		oneOf("reason", d.Reason, "CANCELLED", "ROBOT_BLOCKED", "ROBOT_FAULT", "ROBOT_OFFLINE", "ORDER_REJECTED", "PICK_FAILED", "DROP_FAILED", "MAP_VERSION_RETIRED"))
+		oneOf("reason", d.Reason, legFailedReasons...))
 }
+
+// legFailedReasons is the pinned LegFailed reason enum, exactly (carry (Task 24 review): a test holds it set-equal).
+var legFailedReasons = []string{"CANCELLED", "ROBOT_BLOCKED", "ROBOT_FAULT", "ROBOT_OFFLINE", "ORDER_REJECTED", "PICK_FAILED",
+	"DROP_FAILED", "MAP_VERSION_RETIRED"}
 
 type fleetCapacityData struct {
 	FleetID         string    `json:"fleet_id"`
