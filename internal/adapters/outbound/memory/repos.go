@@ -108,8 +108,15 @@ func (r *Orders) Save(_ context.Context, o *transportorder.Order) error {
 	if err := r.s.injected("orders"); err != nil {
 		return err
 	}
-	r.s.with(func(t *tables) { r.put(t, o) })
-	return nil
+	var err error
+	r.s.with(func(t *tables) {
+		if _, ok := t.orders[o.ID()]; !ok { // carry (Task 13 review): Postgres parity
+			err = ports.ErrNotFound
+			return
+		}
+		r.put(t, o)
+	})
+	return err
 }
 
 type Tracks struct{ s *Store }

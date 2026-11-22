@@ -84,9 +84,8 @@ func (r *Orders) write(ctx context.Context, o *transportorder.Order, insert bool
 		if tag.RowsAffected() == 0 {
 			return ports.ErrDuplicate
 		}
-	} else if _, err := q.Exec(ctx, `UPDATE transport_orders SET status = $2, snapshot = $3, version = $4, updated_at = now()
-		WHERE transport_order_id = $1`, s.ID, string(s.Status), b, s.Version); err != nil {
-		return fmt.Errorf("save transport order: %w", err)
+	} else if err := updateOrder(ctx, q, s, b); err != nil {
+		return err
 	}
 	refs := make([]string, 0, len(s.Legs))
 	for _, l := range s.Legs {
@@ -95,6 +94,20 @@ func (r *Orders) write(ctx context.Context, o *transportorder.Order, insert bool
 	if _, err := q.Exec(ctx, `INSERT INTO transport_legs (leg_ref, transport_order_id) SELECT unnest($1::text[]), $2
 		ON CONFLICT (leg_ref) DO NOTHING`, refs, s.ID); err != nil {
 		return fmt.Errorf("save leg references: %w", err)
+	}
+	return nil
+}
+
+// updateOrder rewrites an existing order row; an order that was never inserted is ports.ErrNotFound (carry, Task 13
+// review).
+func updateOrder(ctx context.Context, q querier, s transportorder.Snapshot, b []byte) error {
+	tag, err := q.Exec(ctx, `UPDATE transport_orders SET status = $2, snapshot = $3, version = $4, updated_at = now()
+		WHERE transport_order_id = $1`, s.ID, string(s.Status), b, s.Version)
+	if err != nil {
+		return fmt.Errorf("save transport order: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("save transport order %s: %w", s.ID, ports.ErrNotFound)
 	}
 	return nil
 }
