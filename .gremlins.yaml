@@ -19,19 +19,20 @@ unleash:
   timeout-coefficient: 30
 
   threshold:
-    # gremlins fails when the measured value is <= the threshold
-    # (internal/report/report.go in gremlins itself), so a threshold must
-    # sit strictly BELOW the number this repo can meet today. Measure
-    # first (`make mutation-full`), THEN set these -- don't guess/copy a
-    # sibling repo's numbers, every domain layer's mutant survivability
-    # differs. See HARNESS.md's mutation-testing section for the
-    # tagless-switch-under-reports pitfall before assuming a low number
-    # means missing tests.
+    # gremlins fails when the measured value is <= the threshold (internal/report/report.go in gremlins itself),
+    # so a threshold sits strictly BELOW what every package meets. Plain numbers: gremlins v0.6.0 reads these keys
+    # with a float type assertion, so a quoted value is read as 0 and never gates.
     #
-    # WRITE A PLAIN NUMBER, NEVER A QUOTED STRING. gremlins v0.6.0 reads these two keys with
-    # a float type assertion (internal/report/report.go `assess`), so `efficacy: "95"` (a YAML
-    # string) is read as 0 and the gate NEVER fails. Verified: a package at 95.24% efficacy exits 0
-    # with "99" and exits 10 with 99. The values below stay 0 (dormant) until you replace them:
-    # efficacy = {{MEASURED_EFFICACY_MINUS_1}}, mutant-coverage = {{MEASURED_MUTANT_COVERAGE_MINUS_1}}.
-    efficacy: 0
-    mutant-coverage: 0
+    # Measured 2026-11-22 (plan 04 Task 26), per package, cold test cache, gremlins v0.6.0, workers 1,
+    # timeout-coefficient 30 (killed / lived / not covered):
+    #   layout            efficacy 100.00%  mutant coverage 100.00%   (39 / 0 / 0)
+    #   routing           efficacy 100.00%  mutant coverage 100.00%   (6 / 0 / 0)
+    #   transportrequest  efficacy 100.00%  mutant coverage 100.00%   (29 / 0 / 0)
+    #   containertrack    efficacy 100.00%  mutant coverage 100.00%   (16 / 0 / 0)
+    #   stationqueue      efficacy 100.00%  mutant coverage 100.00%   (15 / 0 / 0)
+    #   transportorder    efficacy 100.00%  mutant coverage 100.00%   (67 / 0 / 0; make mutation, the fast blocking subset)
+    #   capacity          efficacy 100.00%  mutant coverage 100.00%   (16 / 0 / 0)
+    #   ./internal/domain (make mutation-full): efficacy 100.00%  mutant coverage 100.00%   (188 / 0 / 0)
+    # No mutant remains (no MUTATION.md); CI's mutation-fast job runs every domain package under ulimit -v 4000000.
+    efficacy: 99
+    mutant-coverage: 99
