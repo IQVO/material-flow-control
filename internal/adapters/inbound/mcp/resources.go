@@ -3,9 +3,13 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/IQVO/material-flow-control/internal/application/usecases"
 )
 
 // mimeTypeJSON is the MIME type of every resource this server serves.
@@ -31,6 +35,9 @@ func (d Deps) registerResources(server *mcp.Server) {
 			return nil, mcp.ResourceNotFoundError(req.Params.URI)
 		}
 		s, err := d.Reads.Station(ctx, stationID)
+		if errors.Is(err, usecases.ErrStationNotFound) {
+			return nil, stationNotFound(req.Params.URI, err)
+		}
 		if err != nil {
 			return nil, mapError(ctx, err)
 		}
@@ -49,4 +56,15 @@ func parseStationURI(uri string) (stationID string, ok bool) {
 		return "", false
 	}
 	return rest, true
+}
+
+// stationNotFound is the protocol's resource-not-found for uri, its message keeping the REST slug
+// station-not-found so both surfaces share one vocabulary. carry (Task 20 review)
+func stationNotFound(uri string, err error) error {
+	nf := mcp.ResourceNotFoundError(uri)
+	var werr *jsonrpc.Error
+	if errors.As(nf, &werr) {
+		werr.Message = toolError("station-not-found", err.Error()).Error()
+	}
+	return nf
 }
