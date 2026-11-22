@@ -3,6 +3,7 @@ package a2a
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/IQVO/material-flow-control/internal/application/usecases"
@@ -23,6 +24,7 @@ func TestEveryTypedReadErrorMapsToItsExactProblem(t *testing.T) {
 		{usecases.ErrRequestNotFound, "transport-request-not-found", "Transport request not found", 404},
 		{usecases.ErrStationNotFound, "station-not-found", "Station not found", 404},
 		{usecases.ErrAsrsNotFound, "asrs-not-found", "AS/RS not found", 404},
+		{usecases.ErrTransportExpired, "transport-request-expired", "Transport request expired", 410}, // ruling P4-R22
 	}
 	if len(cases) != len(useCaseProblems) {
 		t.Fatalf("useCaseProblems has %d entries, the table pins %d: pin the new one here", len(useCaseProblems), len(cases))
@@ -32,6 +34,15 @@ func TestEveryTypedReadErrorMapsToItsExactProblem(t *testing.T) {
 		p := problemFromUseCase(context.Background(), wrapped)
 		if p.Code != c.code || p.Title != c.title || p.Status != c.status || p.Type != base+c.code || p.Detail != wrapped.Error() {
 			t.Errorf("%v -> %+v, want code %s title %q status %d type %s%s", c.err, *p, c.code, c.title, c.status, base, c.code)
+		}
+	}
+}
+
+// ruling P4-R22: the transport_status skill names the problem an id whose order was purged answers.
+func TestTheTransportStatusSkillNamesTheExpiredProblem(t *testing.T) {
+	for _, s := range Card(Config{AgentURL: "http://a2a", Version: "v1"}).Skills {
+		if s.ID == skillTransportStatus && !strings.Contains(s.Description, "transport-request-expired") {
+			t.Fatalf("transport_status description %q does not name transport-request-expired", s.Description)
 		}
 	}
 }

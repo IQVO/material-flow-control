@@ -105,7 +105,7 @@ func (s *Service) transportView(ctx context.Context, rec transportrequest.Record
 	if rec.Outcome == transportrequest.OutcomeRejected {
 		return rejectedView(rec), nil
 	}
-	o, err := s.d.Orders.Get(ctx, rec.OrderID)
+	o, err := s.order(ctx, rec)
 	if err != nil {
 		return TransportView{}, err
 	}
@@ -114,6 +114,17 @@ func (s *Service) transportView(ctx context.Context, rec transportrequest.Record
 		return TransportView{}, err
 	}
 	return viewOf(rec, o.Snapshot(), pos), nil
+}
+
+// order reads the order of an ACCEPTED record. ruling P4-R22: the record outlives its order (the retention purges
+// ended orders, ADR 0008), so a missing order is the expired answer, never a 500. A purge committing between the
+// record read and this one (no shared snapshot outside a unit of work) answers the same.
+func (s *Service) order(ctx context.Context, rec transportrequest.Record) (*transportorder.Order, error) {
+	o, err := s.d.Orders.Get(ctx, rec.OrderID)
+	if errors.Is(err, ports.ErrNotFound) {
+		return nil, ErrTransportExpired
+	}
+	return o, err
 }
 
 func (s *Service) record(ctx context.Context, requestID string) (transportrequest.Record, error) {
@@ -142,7 +153,7 @@ func (s *Service) OrderDetail(ctx context.Context, requestID string) (transporto
 	if rec.Outcome == transportrequest.OutcomeRejected {
 		return transportorder.Snapshot{}, ErrTransportEnded
 	}
-	o, err := s.d.Orders.Get(ctx, rec.OrderID)
+	o, err := s.order(ctx, rec)
 	if err != nil {
 		return transportorder.Snapshot{}, err
 	}
