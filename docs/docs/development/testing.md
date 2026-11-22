@@ -86,8 +86,11 @@ mkdir -p .e2e/amr-fleet-control/config
 git -C ../amr-fleet-control show 09a8f1915be5129efbb240dd6730fec640f93635:config/map.example.yaml > .e2e/amr-fleet-control/config/map.example.yaml
 EQUIPMENT_EMULATOR_IMAGE=equipment-emulator:e2e ASRS_CONTROL_IMAGE=asrs-control:e2e \
   AMR_FLEET_CONTROL_IMAGE=amr-fleet-control:e2e AMR_FLEET_CONTROL_MAP=$PWD/.e2e/amr-fleet-control/config/map.example.yaml \
-  go test -tags integration ./cmd/api/ -run TestTheEightAcceptanceRows -count=1 -v
+  go test -tags integration ./cmd/api/ -run TestTheEightAcceptanceRows -count=1 -timeout 25m -v
 ```
+
+`-timeout 25m` (also on CI's integration step): the test's waits sum to about 24 minutes at worst (the budget comment
+above the test), more than `go test`'s 10-minute default; a run on the emulator floor takes about a minute.
 
 Raising a pin is a deliberate change (a new commit in `ci.yml` and here, the test rerun), never `develop`.
 

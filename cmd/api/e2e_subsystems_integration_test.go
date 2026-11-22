@@ -55,18 +55,24 @@ func readFile(t *testing.T, path string) []byte {
 	return b
 }
 
+// The wait budget fits `-timeout 25m` (CI's integration step and docs/docs/development/testing.md): container start
+// <= 360 s (asrs-control and amr-fleet-control 120 s each, the emulator and Mosquitto 60 s each) plus the row waits
+// <= 1070 s (putaways 3 x (60 + 10), arrival 90, pick 60, replenishment 90 + 10, idempotency 30, rejection 30,
+// return 90 + 10, outbound 90 + 10, clarification 90 + 30 + 45, capacity 60 + 30 + 60, the end check 3 + 30), 24 min in
+// all; a run on the emulator floor (SIM_SPEED=10) takes about a minute.
+// carry (Task 25 review)
 func TestTheEightAcceptanceRowsAgainstTheRealSubsystems(t *testing.T) {
 	f := startFloor(t)
 	f.putaway()
 	pick, repl, busy := f.goodsToPersonIdempotencyAndRejection()
-	f.completed("pick", pick, 120*time.Second)
-	f.completed("replenishment", repl, 240*time.Second)
+	f.completed("pick", pick, 60*time.Second)
+	f.completed("replenishment", repl, 90*time.Second)
 	f.idempotency(pick)
 	f.rejection(busy)
 	// Goods-to-person, second half: the RETURN of the picked container stores it again.
-	f.completed("return", f.accept(f.id("ret-1"), f.id("TOTE-1"), "ST1", asrsLoc, "RETURN"), 180*time.Second)
+	f.completed("return", f.accept(f.id("ret-1"), f.id("TOTE-1"), "ST1", asrsLoc, "RETURN"), 90*time.Second)
 	// Outbound: from the forward area to the pack station.
-	f.completed("outbound", f.accept(f.id("out-1"), f.id("TOTE-2"), "WH1-FWD-FWD1", "WH1-PCK-PK1", "OUTBOUND"), 180*time.Second)
+	f.completed("outbound", f.accept(f.id("out-1"), f.id("TOTE-2"), "WH1-FWD-FWD1", "WH1-PCK-PK1", "OUTBOUND"), 90*time.Second)
 	f.clarification()
 	f.capacityLoop()
 	f.oneOutcomeEach()
@@ -94,7 +100,7 @@ func (f *floor) putaway() {
 	f.t.Helper()
 	for _, c := range []string{"TOTE-1", "TOTE-2", "TOTE-3"} {
 		order := f.accept(f.id("put-"+c), f.id(c), decant, asrsLoc, "PUTAWAY")
-		f.completed("putaway "+c, order, 180*time.Second)
+		f.completed("putaway "+c, order, 60*time.Second)
 		f.track(f.id(c), 10*time.Second, func(p map[string]any) bool { return p["kind"] == "IN_ASRS" })
 	}
 }
@@ -113,7 +119,7 @@ func (f *floor) goodsToPersonIdempotencyAndRejection() (pick, repl string, busy 
 	if code, rej := f.transport(f.id("repl-2"), f.id("TOTE-2"), asrsLoc, "WH1-FWD-FWD1", "REPLENISH"); code != http.StatusUnprocessableEntity || rej["reason"] != "CONTAINER_BUSY" {
 		f.t.Fatalf("busy = %d %v", code, rej)
 	}
-	evs := factsFrom(f.t, f.marks[pick], func(evs []map[string]any) bool { return len(named(evs, pick, "ContainerArrivedAtStation")) == 1 }, 240*time.Second)
+	evs := factsFrom(f.t, f.marks[pick], func(evs []map[string]any) bool { return len(named(evs, pick, "ContainerArrivedAtStation")) == 1 }, 90*time.Second)
 	if d := data(named(evs, pick, "ContainerArrivedAtStation")[0]); d["station_id"] != "ST1" || d["queue_position"] != 1.0 {
 		f.t.Fatalf("arrival = %v", d)
 	}
@@ -161,7 +167,7 @@ func (f *floor) clarification() {
 	f.fault("ASRS_NO_READ", "ASRS1", "OUT1", true)
 	f.fault("ASRS_NO_READ", "ASRS1", "OUT2", true)
 	order := f.accept(f.id("pick-3"), f.id("TOTE-3"), asrsLoc, "ST1", "PICK")
-	ev := f.ended(order, 180*time.Second)
+	ev := f.ended(order, 90*time.Second)
 	if !strings.HasSuffix(fmt.Sprint(ev["type"]), ".TransportFailed") || data(ev)["reason"] != "CLARIFICATION" {
 		f.t.Fatalf("clarification outcome = %v", ev)
 	}
@@ -171,7 +177,7 @@ func (f *floor) clarification() {
 	if d := data(named(evs, f.id("TOTE-3"), "ContainerSentToClarification")[0]); d["reason"] != "NO_READ" {
 		f.t.Fatalf("sent to clarification = %v", d)
 	}
-	f.track(f.id("TOTE-3"), 180*time.Second, func(p map[string]any) bool {
+	f.track(f.id("TOTE-3"), 45*time.Second, func(p map[string]any) bool {
 		return p["kind"] == "AT_CLARIFICATION" && p["code"] == "WH1-CLR-CLR1"
 	})
 	f.fault("ASRS_NO_READ", "ASRS1", "OUT1", false)
