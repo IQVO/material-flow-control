@@ -46,11 +46,15 @@ func decodeJSON(r *http.Request, dest any) error {
 	if err := dec.Decode(dest); err != nil {
 		return fmt.Errorf("%w: %w", errMalformedRequest, err)
 	}
-	if dec.More() {
+	if !atEOF(dec) {
 		return fmt.Errorf("%w: trailing data after the JSON body", errMalformedRequest)
 	}
 	return nil
 }
+
+// atEOF reports whether dec holds nothing after the value it decoded: the next Decode must be io.EOF, so a second
+// value and a stray closer (`}` or `]`, which dec.More misses) are both trailing data. carry (Task 26 review)
+func atEOF(dec *json.Decoder) bool { return errors.Is(dec.Decode(&struct{}{}), io.EOF) }
 
 // rejectNUL refuses an identifier Postgres cannot store or a log line could be forged with:
 // empty, longer than 128 characters, or holding NUL or any other control character.
