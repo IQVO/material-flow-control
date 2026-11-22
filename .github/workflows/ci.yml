@@ -36,6 +36,13 @@ jobs:
         with:
           version: v2.14.0
           args: --timeout=5m
+      # carry (Task 26 review): the integration-tagged files (testcontainers suites, the e2e) are linted too; the
+      # default build excludes them, so the first step never sees them.
+      - name: golangci-lint (integration build tag)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: v2.14.0
+          args: --timeout=5m --build-tags integration
 
   # Agent-guide sensor (harness-template v3): skills load, references resolve, context budget.
   # ADVISORY (continue-on-error) until the guides are clean; then flip to blocking.
