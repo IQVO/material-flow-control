@@ -54,8 +54,22 @@ will run.
 
 The end-to-end test (`cmd/api/e2e_subsystems_integration_test.go`) will run material-flow-control in-process against
 the REAL `asrs-control`, `amr-fleet-control` and `equipment-emulator` built from pinned commits, with Postgres, Kafka
-and Mosquitto in testcontainers, and no in-test subsystem fake. It lands once amr-fleet-control is merged; until then
-the amr-fleet-control client and consumer are tested against fixtures written from its interface table.
+and Mosquitto in testcontainers, and no in-test subsystem fake; `amr-fleet-control` is built from `09a8f19`, the
+commit `contracts/pinned.json` pins. amr-fleet-control is merged and its two contracts are pinned, so until the
+end-to-end test lands its client and consumer are proven against the pinned copies (see
+[Consumer contract tests](#consumer-contract-tests)).
+
+## Consumer contract tests
+
+`contracts/pinned.json` lists the four producer files this repo pins (asrs-control and amr-fleet-control, AsyncAPI
+and OpenAPI each); CI's `pinned-contracts` job fails when a copy differs from the producer's `develop`. The tests
+beside each adapter read the pinned copies:
+
+| Test file | Proves |
+| --- | --- |
+| `internal/adapters/inbound/kafka/pinned_asrs_test.go`, `pinned_amr_test.go` | every pinned example of a consumed type is applied by the production handler; every field the consumer decodes exists in the pinned schema; the capacity mapping fields exist and `robots_total` may be 0 |
+| `internal/adapters/inbound/kafka/required_fields_test.go` | every field the pinned schema requires is required (poison without it), the optional ones may be absent, the enums are the pinned ones, and the amr-fleet-control fixtures satisfy the pinned schema |
+| `internal/adapters/outbound/amr/pinned_test.go` | the paths exist, the leg request sends only declared properties and every required one, the `Leg` answer carries what the client reads, and `amr.Retryable` equals the pinned RETRYABLE refusals |
 
 ## Fitness tests (`internal/architecture`)
 
