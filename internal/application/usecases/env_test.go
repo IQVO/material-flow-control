@@ -55,6 +55,17 @@ func newEnv(t *testing.T) *env {
 // newEnvWith is newEnv with the AMR client wrapped (e.amr stays the memory double the wrapper delegates to).
 func newEnvWith(t *testing.T, amr func(*memory.Amr) ports.AmrClient) *env {
 	t.Helper()
+	return newEnvWithClients(t, func(a *memory.Asrs) ports.AsrsClient { return a }, amr)
+}
+
+// newEnvWithAsrs is newEnv with the AS/RS client wrapped (e.asrs stays the memory double). carry (Task 11 review)
+func newEnvWithAsrs(t *testing.T, asrs func(*memory.Asrs) ports.AsrsClient) *env {
+	t.Helper()
+	return newEnvWithClients(t, asrs, func(a *memory.Amr) ports.AmrClient { return a })
+}
+
+func newEnvWithClients(t *testing.T, asrs func(*memory.Asrs) ports.AsrsClient, amr func(*memory.Amr) ports.AmrClient) *env {
+	t.Helper()
 	l, err := config.LoadLayout("../../../config/flow-layout.example.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +77,7 @@ func newEnvWith(t *testing.T, amr func(*memory.Amr) ports.AmrClient) *env {
 	e.svc, err = usecases.NewService(l, usecases.DefaultConfig(), usecases.Deps{
 		UoW: memory.NewUnitOfWork(s), Lock: memory.FlowLock{}, Requests: memory.NewRequests(s), Orders: e.orders, Tracks: e.tracks,
 		Stations: memory.NewStations(s), Capacities: e.caps, Units: memory.NewUnits(s), Commands: e.cmds, Inbox: memory.NewInbox(s),
-		Sink: e.events, Asrs: e.asrs, Amr: amr(e.amr), Clock: e.clock, IDs: memory.NewIDs("u"), Metrics: e.metrics, Kick: &memory.Kicker{},
+		Sink: e.events, Asrs: asrs(e.asrs), Amr: amr(e.amr), Clock: e.clock, IDs: memory.NewIDs("u"), Metrics: e.metrics, Kick: &memory.Kicker{},
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
