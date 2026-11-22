@@ -27,6 +27,8 @@ const (
 	catchUpAsrsTopic = "warehouse.asrs-control.events"
 	catchUpAmrTopic  = "warehouse.amr-fleet-control.events"
 	catchUpBacklog   = 400
+	// catchUpAmrBacklog is long enough that the AMR group is still replaying when a gate blind to it would open.
+	catchUpAmrBacklog = 1000
 )
 
 // ruling P4-R20: material-flow-control decides no transport request and reports no readiness before both subsystem
@@ -35,12 +37,27 @@ const (
 // mid-replay would be refused UNKNOWN_CONTAINER (or SUBSYSTEM_UNAVAILABLE) for good under its transport_request_id
 // (decision D7). The test's own layout (ASRS9/AMR9) keeps its facts out of the e2e test's way on the shared topics.
 func TestNoRequestIsDecidedAndReadyzIsNotReadyBeforeTheBacklogIsReplayed(t *testing.T) {
+	requireNoDecisionBeforeCatchUp(t, catchUpBacklog, 1)
+}
+
+// carry (Task 26 review): the AMR topic holds the long backlog (1000 FleetCapacityChanged of AMR9, offline until the
+// LAST one) and the AS/RS topic two facts, so a gate that samples only the AS/RS topic opens while the AMR group is
+// still replaying and the committed-offset check below fails (review mutant mC: wire drops the AMR Subscription).
+func TestNoRequestIsDecidedBeforeTheAmrBacklogIsReplayed(t *testing.T) {
+	requireNoDecisionBeforeCatchUp(t, 1, catchUpAmrBacklog)
+}
+
+// requireNoDecisionBeforeCatchUp publishes asrsN ContainerStored and amrN FleetCapacityChanged facts before boot,
+// then pins: the first POST is 503 (not decided), /readyz is 503, ready only once both groups committed the end
+// offsets sampled at boot, and the same key and body is decided (202) after.
+func requireNoDecisionBeforeCatchUp(t *testing.T, asrsN, amrN int) {
+	t.Helper()
 	for _, topic := range []string{catchUpAsrsTopic, catchUpAmrTopic, mfcTopic, "warehouse.material-flow-control.analytics",
 		"warehouse.asrs-control.events.dlq", "warehouse.amr-fleet-control.events.dlq"} {
 		kafkatest.CreateTopic(t, topic)
 	}
 	nano := strconv.FormatInt(time.Now().UnixNano(), 36)
-	last := publishBacklog(t, nano)
+	last := publishBacklog(t, nano, asrsN, amrN)
 	boot := map[string]int64{catchUpAsrsTopic: kafkatest.EndOffset(t, catchUpAsrsTopic), catchUpAmrTopic: kafkatest.EndOffset(t, catchUpAmrTopic)}
 	groups := map[string]string{catchUpAsrsTopic: "catchup-asrs-" + nano, catchUpAmrTopic: "catchup-amr-" + nano}
 	base := startCatchUpApp(t, groups)
@@ -79,23 +96,33 @@ func TestNoRequestIsDecidedAndReadyzIsNotReadyBeforeTheBacklogIsReplayed(t *test
 	}
 }
 
-// publishBacklog writes the capacity facts, then catchUpBacklog ContainerStored facts; it returns the last container.
-func publishBacklog(t *testing.T, nano string) string {
+// publishBacklog writes the capacity facts, then asrsN ContainerStored facts (the requested container LAST), then
+// amrN FleetCapacityChanged facts of AMR9 (offline until the LAST one); it returns the last container.
+func publishBacklog(t *testing.T, nano string, asrsN, amrN int) string {
 	t.Helper()
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := time.Now().UTC()
 	asrs := []kafkago.Message{subsystemFact(t, catchUpAsrsTopic, "com.warehouse.wes.asrs-control.asrs.AsrsCapacityChanged", "ASRS9",
 		map[string]any{"asrs_id": "ASRS9", "units_total": 2, "units_available": 2, "positions_total": 100, "positions_free": 50,
-			"open_jobs": 0, "measured_at": now})}
+			"open_jobs": 0, "measured_at": now.Format(time.RFC3339Nano)})}
 	var last string
-	for i := range catchUpBacklog {
+	for i := range asrsN {
 		last = fmt.Sprintf("TOTE-%s-%d", nano, i)
 		asrs = append(asrs, subsystemFact(t, catchUpAsrsTopic, "com.warehouse.wes.asrs-control.storagejob.ContainerStored", last,
-			map[string]any{"storage_job_id": "sj-" + last, "asrs_id": "ASRS9", "container_id": last, "port_id": "IN1", "stored_at": now}))
+			map[string]any{"storage_job_id": "sj-" + last, "asrs_id": "ASRS9", "container_id": last, "port_id": "IN1",
+				"stored_at": now.Format(time.RFC3339Nano)}))
 	}
-	amr := subsystemFact(t, catchUpAmrTopic, "com.warehouse.wes.amr-fleet-control.fleet.FleetCapacityChanged", "AMR9",
-		map[string]any{"fleet_id": "AMR9", "robots_total": 3, "robots_online": 3, "robots_available": 3, "robots_charging": 0,
-			"robots_held": 0, "legs_queued": 0, "legs_active": 0, "changed_at": now})
-	writeFacts(t, append(asrs, amr))
+	amr := make([]kafkago.Message, 0, amrN)
+	for i := range amrN {
+		online := 0
+		if i == amrN-1 {
+			online = 3
+		}
+		amr = append(amr, subsystemFact(t, catchUpAmrTopic, "com.warehouse.wes.amr-fleet-control.fleet.FleetCapacityChanged", "AMR9",
+			map[string]any{"fleet_id": "AMR9", "robots_total": 3, "robots_online": online, "robots_available": online,
+				"robots_charging": 0, "robots_held": 0, "legs_queued": 0, "legs_active": 0,
+				"changed_at": now.Add(time.Duration(i) * time.Millisecond).Format(time.RFC3339Nano)}))
+	}
+	writeFacts(t, append(asrs, amr...))
 	return last
 }
 
