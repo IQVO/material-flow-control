@@ -14,7 +14,7 @@ description: "Unit tests, the eight BDD acceptance scenarios, integration tests 
 | Integration | `make integration` (`go test -tags integration ./...`) | the Postgres repositories, the flow lock and its timeouts, the Idempotency middleware over real Postgres, the consumers and the relay over real Kafka, `cmd/api` traces and outbox gauges, the end-to-end test against the released subsystems |
 | Fitness | `make arch-test` | the hexagonal import rules (arch-go) and the sensors in `internal/architecture` |
 | Coverage | `make coverage` | at least 90% of `./internal/domain/...` and `./internal/application/...` |
-| Mutation | `make mutation`, `make mutation-full` | gremlins on `transportorder` and on every domain package (efficacy and mutant coverage both gated at 99) |
+| Mutation | `make mutation`, `make mutation-full` | gremlins once per domain package (as CI's `mutation-fast`) and on the aggregate `./internal/domain` (efficacy and mutant coverage both gated at 99) |
 
 `make check-fast` (format, vet, fitness tests and the tests of the changed packages) is the quick local gate;
 `make check` (fmt-check, vet, build, lint, test) is the pre-push gate. Tests assert exact values: statuses, reasons,
