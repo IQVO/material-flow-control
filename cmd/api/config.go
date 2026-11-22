@@ -37,6 +37,10 @@ type retention struct {
 // retry after the record was purged would be accepted again and move the container twice.
 const minOrderRetentionHours = 24
 
+// maxRetentionHours caps every retention window at ten years. carry (retention review): time.Duration overflows past
+// 2562047 hours, and an overflowed window puts the cutoff in the future, which purges every terminal row at once.
+const maxRetentionHours = 87600
+
 type reader struct {
 	getenv func(string) string
 	errs   []error
@@ -86,15 +90,16 @@ func (r *reader) pos(name string, def int) int {
 	return n
 }
 
-// hours is a duration in hours of at least floor (1 = pos).
+// hours is a duration in hours of at least floor (1 = pos) and at most maxRetentionHours.
 func (r *reader) hours(name string, def, floor int) time.Duration {
 	v := r.str(name, "")
 	if v == "" {
 		return time.Duration(def) * time.Hour
 	}
 	n, err := strconv.Atoi(v)
-	if err != nil || n < floor {
-		r.errs = append(r.errs, fmt.Errorf("%s must be a whole number of hours of at least %d, got %q", name, floor, v))
+	if err != nil || n < floor || n > maxRetentionHours {
+		r.errs = append(r.errs, fmt.Errorf("%s must be a whole number of hours of at least %d and at most %d, got %q",
+			name, floor, maxRetentionHours, v))
 		return time.Duration(def) * time.Hour
 	}
 	return time.Duration(n) * time.Hour

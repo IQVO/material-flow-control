@@ -60,3 +60,26 @@ func TestAnOrderRetentionShorterThanTheIdempotencyWindowIsABootError(t *testing.
 		t.Fatalf("24h: %+v, %v", c.Retention, err)
 	}
 }
+
+// carry (retention review): a window past maxRetentionHours (ten years) is a boot error naming the variable.
+// time.Duration overflows past 2562047 hours, so an unbounded window turned negative and the cutoff into the
+// future: every terminal row would be purged at once.
+func TestARetentionWindowPastTenYearsIsABootErrorNamingIt(t *testing.T) {
+	for _, name := range []string{"ORDER_RETENTION_HOURS", "CONTAINER_MOVE_RETENTION_HOURS", "COMMAND_RETENTION_HOURS",
+		"OUTBOX_RETENTION_HOURS"} {
+		for _, v := range []string{"87601", "2562048", "9223372036854775807"} {
+			m := full()
+			m[name] = v
+			if _, err := loadConfig(env(m)); err == nil || !strings.Contains(err.Error(), name) ||
+				!strings.Contains(err.Error(), "87600") {
+				t.Errorf("%s=%q: err = %v, want a boot error naming it and the 87600-hour cap", name, v, err)
+			}
+		}
+		m := full()
+		m[name] = "87600"
+		if c, err := loadConfig(env(m)); err != nil || c.Retention.Orders+c.Retention.Moves+c.Retention.Commands+
+			c.Retention.Outbox <= 0 {
+			t.Errorf("%s=87600: %+v, %v; want accepted", name, c.Retention, err)
+		}
+	}
+}

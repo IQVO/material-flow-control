@@ -47,7 +47,8 @@ are trimmed of surrounding spaces; an empty value counts as unset.
 | `ENVIRONMENT` | `local` | `deployment.environment.name` (read by the telemetry adapter). |
 
 A positive-integer variable set to `0`, a negative number or a non-number is a boot error naming it; `LEG_RETRY_LIMIT`
-refuses only negatives and non-numbers, and `ORDER_RETENTION_HOURS` also refuses values under `24`. A `LOG_LEVEL` that is set but names no level is a boot error in all three
+refuses only negatives and non-numbers, and `ORDER_RETENTION_HOURS` also refuses values under `24`. Every
+`*_RETENTION_HOURS` window is at most `87600` (ten years): a larger value is a boot error naming it. A `LOG_LEVEL` that is set but names no level is a boot error in all three
 binaries, never a silent fallback to `info`.
 
 ## cmd/mcp
