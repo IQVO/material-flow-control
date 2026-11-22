@@ -68,12 +68,19 @@ their own migrations at boot. The floor files are `cmd/api/testdata/e2e/`: `worl
 and `flow-layout.yaml` (byte-equal to `config/flow-layout.example.yaml`).
 
 The rows, in order, asserted on the REST answers and on `warehouse.material-flow-control.events`: putaway of TOTE-1..3
-from the decant handoff (`IN_ASRS`), goods-to-person (PICK TOTE-1 to ST1, queue position 1), idempotency (the same
-`transport_request_id` under a new key: one order), rejection (`422 CONTAINER_BUSY`, `TransportRejected`, no order),
-replenishment (TOTE-2 to `FWD1`), the return of TOTE-1, outbound (`FWD1` to `PK1`), clarification (`ASRS_NO_READ`:
-`TransportFailed` `CLARIFICATION`, `ContainerSentToClarification` `NO_READ`, the track `AT_CLARIFICATION` at
-`WH1-CLR-CLR1`) and the capacity loop (`ROBOT_DISCONNECT` of R2: `AMR_FLEET/AMR1` `DEGRADED`, one unit fewer, within
-60 s). On a failure the test prints each container's log tail.
+from the decant handoff (track `IN_ASRS` at `WH1-AUTO-ASRS-ASRS1-00-00-S`), goods-to-person (PICK TOTE-1 to ST1, queue
+position 1), idempotency (the same `transport_request_id` under a new key: exactly one `TransportAccepted` carries that
+request id), rejection (`422 CONTAINER_BUSY`, `TransportRejected`, no order), replenishment (TOTE-2 to `FWD1`, track
+`AT_HANDOFF` at `WH1-FWD-FWD1`), the return of TOTE-1 (track `IN_ASRS` again), outbound (`FWD1` to `PK1`, track
+`AT_HANDOFF` at `WH1-PCK-PK1`), clarification (`ASRS_NO_READ`: `TransportFailed` `CLARIFICATION`,
+`ContainerSentToClarification` `NO_READ`, the track `AT_CLARIFICATION` at `WH1-CLR-CLR1`) and the capacity loop
+(`ROBOT_DISCONNECT` of R2: `AMR_FLEET/AMR1` `DEGRADED`, one unit fewer, within 60 s). At the end, one read of the run's
+facts requires each of its 8 orders to have exactly one outcome. On a failure the test prints each container's log tail.
+
+Every fact wait is positional (ruling P4-R19): it reads from a mark, `kafkatest.EndOffset` taken BEFORE its stimulus
+(`kafkatest.ReadFrom`), never from offset 0, so no older fact (the boot ramp, an earlier `-count` run) can satisfy it.
+The capacity loop requires the last fleet fact before its mark to be the idle fleet (`AVAILABLE` 3 of 3), and the
+`DEGRADED` fact to come after it.
 
 CI's `integration` job checks out the three commits, builds the images and sets the four variables. Locally (an arm64
 host builds natively; the published images are amd64-only):
