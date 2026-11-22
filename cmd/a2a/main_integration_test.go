@@ -109,7 +109,7 @@ func askSkill(t *testing.T, client *a2aclient.Client, skill string, args map[str
 func TestA2AServesPostgresBackedReadsAndWritesNothing(t *testing.T) {
 	url := pgtest.URL(t)
 	seedPick(t, url)
-	before := rowCounts(t, url)
+	before, sums := rowCounts(t, url), tableFingerprints(t, url)
 	reads, closeReads, err := buildReads(context.Background(), config{DatabaseURL: url, MigrationsURL: url, LayoutFile: layoutFile})
 	if err != nil {
 		t.Fatal(err)
@@ -143,6 +143,7 @@ func TestA2AServesPostgresBackedReadsAndWritesNothing(t *testing.T) {
 		t.Fatalf("equipment_units = %v", got)
 	}
 	assertNoWrites(t, before, rowCounts(t, url))
+	assertSameFingerprints(t, "A2A agent", sums, tableFingerprints(t, url))
 }
 
 func assertNoWrites(t *testing.T, before, after map[string]int) {
@@ -154,5 +155,55 @@ func assertNoWrites(t *testing.T, before, after map[string]int) {
 	}
 	if before["transport_requests"] != 1 || before["subsystem_commands"] == 0 {
 		t.Fatalf("the seed did not accept rq-1: %v", before)
+	}
+}
+
+// tableFingerprints is an md5 of every row of every table of the public schema (migrations bookkeeping included), so
+// an UPDATE that keeps a row count is caught too. carry (Task 21 review)
+func tableFingerprints(t *testing.T, url string) map[string]string {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := postgres.NewPool(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		tables = append(tables, name)
+	}
+	rows.Close()
+	if len(tables) < 10 {
+		t.Fatalf("public tables = %v, want the whole schema", tables)
+	}
+	out := make(map[string]string, len(tables))
+	for _, table := range tables {
+		var sum string
+		q := `SELECT md5(coalesce(string_agg(r::text, '|' ORDER BY r::text), '')) FROM "` + table + `" r`
+		if err := pool.QueryRow(ctx, q).Scan(&sum); err != nil {
+			t.Fatal(err)
+		}
+		out[table] = sum
+	}
+	return out
+}
+
+func assertSameFingerprints(t *testing.T, surface string, before, after map[string]string) {
+	t.Helper()
+	if len(after) != len(before) {
+		t.Fatalf("the %s changed the schema: tables %d, want %d", surface, len(after), len(before))
+	}
+	for table, sum := range before {
+		if after[table] != sum {
+			t.Errorf("the %s changed table %s (md5 %s, want %s)", surface, table, after[table], sum)
+		}
 	}
 }
