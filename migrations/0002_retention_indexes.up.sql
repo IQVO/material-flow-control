@@ -13,8 +13,6 @@ ALTER TABLE transport_requests ALTER COLUMN transport_order_id TYPE TEXT COLLATE
 CREATE INDEX idx_transport_legs_order ON transport_legs (transport_order_id);
 CREATE INDEX idx_transport_orders_ended ON transport_orders (updated_at) WHERE status IN ('COMPLETED', 'FAILED');
 CREATE INDEX idx_transport_orders_open_container ON transport_orders (container_id) WHERE status = 'IN_PROGRESS';
-CREATE INDEX idx_transport_requests_order ON transport_requests (transport_order_id);
-CREATE INDEX idx_transport_requests_rejected ON transport_requests (recorded_at) WHERE outcome = 'REJECTED';
 CREATE INDEX idx_container_tracks_active_order ON container_tracks (active_order_id) WHERE active_order_id <> '';
 -- carry (retention review): (moved_at, id) is the moves purge's keyset order.
 CREATE INDEX idx_container_moves_moved_at ON container_moves (moved_at, id);

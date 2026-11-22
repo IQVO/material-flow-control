@@ -112,7 +112,7 @@ func retentionPurgers(pool *pgxpool.Pool, cfg config) []purger {
 	for _, p := range []struct {
 		store *postgres.Retention
 		keep  time.Duration
-	}{{postgres.NewOrderRetention(pool, r.Batch), r.Orders}, {postgres.NewRejectedRequestRetention(pool, r.Batch), r.Orders},
+	}{{postgres.NewOrderRetention(pool, r.Batch), r.Orders},
 		{postgres.NewContainerMoveRetention(pool, r.Batch, cfg.UseCases.HistoryLimit), r.Moves},
 		{postgres.NewCommandRetention(pool, r.Batch), r.Commands}, {postgres.NewOutboxRetention(pool, r.Batch), r.Outbox}} {
 		out = append(out, purger{p.store.Table(), p.store, p.keep})

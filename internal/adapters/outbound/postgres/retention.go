@@ -85,8 +85,8 @@ func statement(sql string, extra ...any) func(batch int) batchFunc {
 // orderRetentionSQL selects ENDED orders last written before the cutoff that nothing live references: no PENDING
 // command (a cancellation still to send), no container track holding it active or in clarification, no station
 // queue occupant or waiting entry (an occupant keeps its slot after its order ended, until the container leaves).
-// The order's request record goes with it (one statement, so no request record ever names a missing order); its
-// legs go by ON DELETE CASCADE. JSON paths are the domain snapshots' exported field names (json.go).
+// Its legs go by ON DELETE CASCADE; ruling P4-R22: its request record stays (a tombstone: a retry of the
+// transport_request_id is answered expired, never accepted again). JSON paths are the domain snapshots' exported field names (json.go).
 // carry (retention review): every order id column is COLLATE "C" like the key (migration 0002), so each guard probes
 // its index; the active-order guard repeats the partial index's predicate (not empty), which a join clause alone does
 // not imply.
@@ -101,23 +101,15 @@ const orderRetentionSQL = `WITH victims AS MATERIALIZED (
 		WHERE q.snapshot @> jsonb_build_object('Occupants', jsonb_build_array(jsonb_build_object('OrderID', o.transport_order_id)))
 		OR q.snapshot @> jsonb_build_object('Waiting', jsonb_build_array(jsonb_build_object('OrderID', o.transport_order_id))))
 	LIMIT $2
-), requests AS (
-	DELETE FROM transport_requests r USING victims v WHERE r.transport_order_id = v.transport_order_id
 )
 DELETE FROM transport_orders o USING victims v WHERE o.transport_order_id = v.transport_order_id`
 
-// NewOrderRetention purges ended transport orders with their legs and their ACCEPTED request records, under the
-// flow lock: a RequestTransport replay or a late fact reads an order and then expects it to be there.
+// NewOrderRetention purges ended transport orders with their legs, under the flow lock: a unit of work (a late fact,
+// a cancellation) reads an order and then expects it to be there. It never deletes a request record (P4-R22).
 func NewOrderRetention(pool *pgxpool.Pool, batch int) *Retention {
 	r := newRetention(pool, "transport_orders", batch, statement(orderRetentionSQL))
 	r.flowLock = true
 	return r
-}
-
-// NewRejectedRequestRetention purges REJECTED request records (they have no order) recorded before the cutoff.
-func NewRejectedRequestRetention(pool *pgxpool.Pool, batch int) *Retention {
-	return newRetention(pool, "transport_requests", batch, statement(`DELETE FROM transport_requests WHERE ctid = ANY(ARRAY(
-		SELECT ctid FROM transport_requests WHERE outcome = 'REJECTED' AND recorded_at < $1 LIMIT $2))`))
 }
 
 // moveRetentionSQL scans the next batch of moves made before the cutoff ($1) in (moved_at, id) order after the cursor

@@ -15,10 +15,10 @@ import (
 	"github.com/IQVO/material-flow-control/internal/testing/pgtest"
 )
 
-// Issue #3 (ADR 0008): retention of container_moves, ended transport orders (with their legs and request records),
-// REJECTED request records, DONE/FAILED subsystem_commands and published outbox rows. Every purge deletes only
-// terminal rows older than its window, never a row a live order or a live aggregate still references, and loops
-// batches until nothing is left.
+// Issue #3 (ADR 0008): retention of container_moves, ended transport orders (with their legs), DONE/FAILED
+// subsystem_commands and published outbox rows. Every purge deletes only terminal rows older than its window, never
+// a row a live order or a live aggregate still references, and loops batches until nothing is left. ruling P4-R22:
+// no purge ever deletes a transport_requests record (the tombstone a retried transport_request_id is answered from).
 
 var (
 	retNow    = time.Now().UTC()
@@ -83,7 +83,9 @@ func purge(t *testing.T, p *postgres.Retention, before time.Time) int64 {
 	return n
 }
 
-func TestOrderRetentionPurgesEndedOrdersOlderThanTheWindowWithTheirLegsAndRequestRecords(t *testing.T) {
+// ruling P4-R22: the order goes with its legs; its ACCEPTED request record stays, so a retry of its
+// transport_request_id is answered expired (410) and never accepted again.
+func TestOrderRetentionPurgesEndedOrdersOlderThanTheWindowWithTheirLegsButKeepsTheirRequestRecords(t *testing.T) {
 	pool := pgtest.Pool(t)
 	seedOrder(t, pool, "O-OLD-DONE", "COMPLETED", retOld)
 	seedOrder(t, pool, "O-OLD-FAILED", "FAILED", retOld)
@@ -95,7 +97,7 @@ func TestOrderRetentionPurgesEndedOrdersOlderThanTheWindowWithTheirLegsAndReques
 	wantIDs(t, "orders", ids(t, pool, `SELECT transport_order_id FROM transport_orders`), "O-RECENT-DONE", "O-OLD-LIVE")
 	wantIDs(t, "legs", ids(t, pool, `SELECT leg_ref FROM transport_legs`), "LEG-O-RECENT-DONE", "LEG-O-OLD-LIVE")
 	wantIDs(t, "request records", ids(t, pool, `SELECT transport_request_id FROM transport_requests`),
-		"REQ-O-RECENT-DONE", "REQ-O-OLD-LIVE")
+		"REQ-O-OLD-DONE", "REQ-O-OLD-FAILED", "REQ-O-RECENT-DONE", "REQ-O-OLD-LIVE")
 }
 
 func TestOrderRetentionKeepsAnEndedOrderALiveRowStillReferences(t *testing.T) {
@@ -128,17 +130,19 @@ func TestOrderRetentionKeepsAnEndedOrderALiveRowStillReferences(t *testing.T) {
 		"O-PENDING-CMD", "O-ACTIVE", "O-CLARIFY", "O-OCCUPANT", "O-WAITING")
 }
 
-func TestRejectedRequestRetentionPurgesOnlyOldRejections(t *testing.T) {
+// ruling P4-R22: REJECTED request records are kept too (a retry is answered its 422 forever): no policy purges
+// transport_requests, whatever its age.
+func TestNoRetentionPolicyDeletesARequestRecord(t *testing.T) {
 	pool := pgtest.Pool(t)
-	seedOrder(t, pool, "O-LIVE", "IN_PROGRESS", retOld)
-	for id, at := range map[string]time.Time{"REJ-OLD": retOld, "REJ-RECENT": retRecent} {
-		exec(t, pool, `INSERT INTO transport_requests (transport_request_id, container_id, outcome, record, recorded_at)
-			VALUES ($1, 'C-1', 'REJECTED', '{}', $2)`, id, at)
+	seedOrder(t, pool, "O-OLD-DONE", "COMPLETED", retOld)
+	exec(t, pool, `INSERT INTO transport_requests (transport_request_id, container_id, outcome, record, recorded_at)
+		VALUES ('REJ-OLD', 'C-1', 'REJECTED', '{}', $1)`, retOld)
+	for _, p := range []*postgres.Retention{postgres.NewOrderRetention(pool, 100), postgres.NewContainerMoveRetention(pool, 100, 1),
+		postgres.NewCommandRetention(pool, 100), postgres.NewOutboxRetention(pool, 100)} {
+		purge(t, p, retNow)
 	}
-	if n := purge(t, postgres.NewRejectedRequestRetention(pool, 100), retCutoff); n != 1 {
-		t.Fatalf("purged %d rejections, want 1", n)
-	}
-	wantIDs(t, "request records", ids(t, pool, `SELECT transport_request_id FROM transport_requests`), "REJ-RECENT", "REQ-O-LIVE")
+	wantIDs(t, "request records", ids(t, pool, `SELECT transport_request_id FROM transport_requests`), "REJ-OLD", "REQ-O-OLD-DONE")
+	wantIDs(t, "orders", ids(t, pool, `SELECT transport_order_id FROM transport_orders`))
 }
 
 func seedMove(t *testing.T, pool *postgres.Pool, container string, at time.Time) {
@@ -217,8 +221,6 @@ func TestEveryRetentionLoopsItsBatchesUntilNothingIsLeft(t *testing.T) {
 		seedMove(t, pool, fmt.Sprintf("C-%02d", i%5), retOld)
 		exec(t, pool, `INSERT INTO subsystem_commands (command_id, transport_order_id, leg_ref, kind, idempotency_key, status, created_at,
 			next_attempt_at, deadline) VALUES ($1, 'O-X', 'LEG', 'REQUEST_LEG', $1, 'DONE', $2, $2, $2)`, fmt.Sprintf("CMD-%02d", i), retOld)
-		exec(t, pool, `INSERT INTO transport_requests (transport_request_id, container_id, outcome, record, recorded_at)
-			VALUES ($1, 'C-1', 'REJECTED', '{}', $2)`, fmt.Sprintf("REJ-%02d", i), retOld)
 	}
 	for i := range 7 {
 		seedOrder(t, pool, fmt.Sprintf("O-%02d", i), "COMPLETED", retOld)
@@ -228,10 +230,9 @@ func TestEveryRetentionLoopsItsBatchesUntilNothingIsLeft(t *testing.T) {
 		want  int64
 		table string
 	}{"outbox": {postgres.NewOutboxRetention(pool, 4), 25, "outbox_events"},
-		"moves":      {postgres.NewContainerMoveRetention(pool, 3, 1), 20, "container_moves"},
-		"commands":   {postgres.NewCommandRetention(pool, 10), 25, "subsystem_commands"},
-		"rejections": {postgres.NewRejectedRequestRetention(pool, 6), 25, "transport_requests"},
-		"orders":     {postgres.NewOrderRetention(pool, 2), 7, "transport_orders"}} {
+		"moves":    {postgres.NewContainerMoveRetention(pool, 3, 1), 20, "container_moves"},
+		"commands": {postgres.NewCommandRetention(pool, 10), 25, "subsystem_commands"},
+		"orders":   {postgres.NewOrderRetention(pool, 2), 7, "transport_orders"}} {
 		if n := purge(t, c.p, retCutoff); n != c.want {
 			t.Errorf("%s purged %d rows over its batches, want %d", name, n, c.want)
 		}

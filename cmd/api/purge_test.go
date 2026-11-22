@@ -52,8 +52,8 @@ func TestAPurgePassCountsEveryTablesRowsAndUsesEachWindow(t *testing.T) {
 	}
 }
 
-// Issue #3 (ADR 0008): cmd/api purges the five retention tables, orders first, each with its own configured window
-// (the REJECTED request records share the order window).
+// Issue #3 (ADR 0008): cmd/api purges the four retention tables, orders first, each with its own configured window.
+// ruling P4-R22: transport_requests is never purged (no REJECTED-record policy).
 func TestTheRetentionPoliciesAreWiredWithTheirWindows(t *testing.T) {
 	m := full()
 	m["ORDER_RETENTION_HOURS"], m["CONTAINER_MOVE_RETENTION_HOURS"], m["COMMAND_RETENTION_HOURS"] = "100", "200", "300"
@@ -66,7 +66,7 @@ func TestTheRetentionPoliciesAreWiredWithTheirWindows(t *testing.T) {
 	for _, p := range retentionPurgers(nil, cfg) {
 		got = append(got, fmt.Sprintf("%s=%s", p.name, p.keep))
 	}
-	want := []string{"transport_orders=100h0m0s", "transport_requests=100h0m0s", "container_moves=200h0m0s",
+	want := []string{"transport_orders=100h0m0s", "container_moves=200h0m0s",
 		"subsystem_commands=300h0m0s", "outbox_events=400h0m0s"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("purgers = %v, want %v", got, want)

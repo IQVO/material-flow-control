@@ -3,8 +3,6 @@ DROP INDEX IF EXISTS idx_subsystem_commands_pending_order;
 DROP INDEX IF EXISTS idx_subsystem_commands_finished;
 DROP INDEX IF EXISTS idx_container_moves_moved_at;
 DROP INDEX IF EXISTS idx_container_tracks_active_order;
-DROP INDEX IF EXISTS idx_transport_requests_rejected;
-DROP INDEX IF EXISTS idx_transport_requests_order;
 DROP INDEX IF EXISTS idx_transport_orders_open_container;
 DROP INDEX IF EXISTS idx_transport_orders_ended;
 DROP INDEX IF EXISTS idx_transport_legs_order; -- carry (retention review)

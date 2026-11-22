@@ -65,7 +65,8 @@ func TestThePurgeLoopRunsTheRetentionPoliciesWithTheDefaultWindows(t *testing.T)
 		}
 	}
 	got := purgedPoints(t, reader)
-	want := map[string]int64{"idempotency_keys": 0, "processed_events": 0, "transport_orders": 1, "transport_requests": 0,
+	// ruling P4-R22: no series for transport_requests: no policy deletes a request record.
+	want := map[string]int64{"idempotency_keys": 0, "processed_events": 0, "transport_orders": 1,
 		"container_moves": 0, "subsystem_commands": 0, "outbox_events": 1}
 	if len(got) != len(want) {
 		t.Fatalf("purged points = %v, want %v", got, want)
