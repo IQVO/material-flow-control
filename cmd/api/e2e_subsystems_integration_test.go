@@ -56,10 +56,10 @@ func readFile(t *testing.T, path string) []byte {
 }
 
 // The wait budget fits `-timeout 25m` (CI's integration step and docs/docs/development/testing.md): container start
-// <= 360 s (asrs-control and amr-fleet-control 120 s each, the emulator and Mosquitto 60 s each) plus the row waits
-// <= 1070 s (putaways 3 x (60 + 10), arrival 90, pick 60, replenishment 90 + 10, idempotency 30, rejection 30,
-// return 90 + 10, outbound 90 + 10, clarification 90 + 30 + 45, capacity 60 + 30 + 60, the end check 3 + 30), 24 min in
-// all; a run on the emulator floor (SIM_SPEED=10) takes about a minute.
+// <= 360 s (asrs-control and amr-fleet-control 120 s each, the emulator and Mosquitto 60 s each), the catch-up 60 s,
+// and the row waits <= 1040 s (putaways 3 x (60 + 10), arrival 90, pick 60, replenishment 90 + 10, idempotency 30,
+// rejection 30, return 90 + 10, outbound 90 + 10, clarification 90 + 30 + 30, capacity 45 + 30 + 60, the end check
+// 3 + 30), 24.3 min in all; a run on the emulator floor (SIM_SPEED=10) takes about a minute.
 // carry (Task 25 review)
 func TestTheEightAcceptanceRowsAgainstTheRealSubsystems(t *testing.T) {
 	f := startFloor(t)
@@ -188,7 +188,7 @@ func (f *floor) clarification() {
 	if d := data(named(evs, f.id("TOTE-3"), "ContainerSentToClarification")[0]); d["reason"] != "NO_READ" {
 		f.t.Fatalf("sent to clarification = %v", d)
 	}
-	f.track(f.id("TOTE-3"), 45*time.Second, func(p map[string]any) bool {
+	f.track(f.id("TOTE-3"), 30*time.Second, func(p map[string]any) bool {
 		return p["kind"] == "AT_CLARIFICATION" && p["code"] == "WH1-CLR-CLR1"
 	})
 	f.fault("ASRS_NO_READ", "ASRS1", "OUT1", false)
@@ -213,7 +213,7 @@ func (f *floor) capacityLoop() {
 				mark, before, fleetFacts(window), seen, fleet)
 		}
 	})
-	f.eventually("the idle fleet (AVAILABLE 3 of 3) as the last capacity fact before the mark", 60*time.Second, func() bool {
+	f.eventually("the idle fleet (AVAILABLE 3 of 3) as the last capacity fact before the mark", 45*time.Second, func() bool {
 		mark = kafkatest.EndOffset(f.t, mfcTopic)
 		window = f.window(f.start, mark)
 		before = lastFleet(window)

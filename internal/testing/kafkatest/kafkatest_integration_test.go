@@ -29,3 +29,14 @@ func TestEndOffsetIsTheMarkAndReadFromSeesOnlyWhatFollowsIt(t *testing.T) {
 		t.Fatalf("ReadAll = %+v, want old-1..new-1 at offsets 0..2", all)
 	}
 }
+
+// ruling P4-R19: a group that never committed has no committed offset (-1); the e2e floor waits until material-flow-
+// control's groups have committed up to the subsystem topics' end offsets.
+func TestCommittedIsMinusOneForAGroupThatNeverCommitted(t *testing.T) {
+	topic := "kafkatest.committed." + strconv.FormatInt(time.Now().UnixNano(), 36)
+	CreateTopic(t, topic)
+	Produce(t, topic, "a")
+	if got := Committed(t, "kafkatest-never-"+topic, topic); got != -1 {
+		t.Fatalf("Committed of a group that never committed = %d, want -1", got)
+	}
+}

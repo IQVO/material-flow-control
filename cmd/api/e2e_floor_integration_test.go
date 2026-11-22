@@ -215,6 +215,7 @@ func startFloor(t *testing.T) *floor {
 	go func() { done <- a.run(runCtx, ln) }()
 	t.Cleanup(func() { cancel(); <-done })
 	f.mfc = "http://" + ln.Addr().String()
+	f.caughtUp(map[string]string{"warehouse.asrs-control.events": "e2e-asrs-" + nano, "warehouse.amr-fleet-control.events": "e2e-amr-" + nano})
 	return f
 }
 

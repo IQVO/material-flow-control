@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -107,4 +108,37 @@ func lastFleet(evs []map[string]any) map[string]any {
 		return map[string]any{"status": "", "units_available": 0.0}
 	}
 	return data(all[len(all)-1])
+}
+
+// caughtUp waits until material-flow-control has handled both subsystem topics up to marks taken now, and its view
+// then has AMR_FLEET/AMR1 AVAILABLE 3 of 3 and ASRS/ASRS1 not UNAVAILABLE. ruling P4-R19: with -count=N its new
+// consumer groups replay the earlier runs' facts from offset 0, their boot ramps (UNAVAILABLE) included, and a
+// request made mid-replay was refused SUBSYSTEM_UNAVAILABLE.
+func (f *floor) caughtUp(groups map[string]string) {
+	f.t.Helper()
+	lag := map[string][2]int64{}
+	var view map[string]any
+	f.eventually("material-flow-control caught up with both subsystems, AMR1 AVAILABLE 3 of 3", 60*time.Second, func() bool {
+		behind := false
+		for topic, group := range groups {
+			end := kafkatest.EndOffset(f.t, topic)
+			done := kafkatest.Committed(f.t, group, topic)
+			lag[topic] = [2]int64{done, end}
+			behind = behind || (end > 0 && done < end)
+		}
+		_, view = f.call(http.MethodGet, f.mfc+"/subsystems", nil, "")
+		amr, asrs := subsystem(view, "AMR_FLEET", "AMR1"), subsystem(view, "ASRS", "ASRS1")
+		return !behind && amr["status"] == "AVAILABLE" && amr["units_total"] == 3.0 && amr["units_available"] == 3.0 &&
+			asrs["status"] != "UNAVAILABLE"
+	}, func() any { return fmt.Sprintf("committed/end offsets %v; GET /subsystems %v", lag, view) })
+}
+
+func subsystem(view map[string]any, kind, id string) map[string]any {
+	all, _ := view["subsystems"].([]any)
+	for _, s := range all {
+		if m, _ := s.(map[string]any); m["subsystem_kind"] == kind && m["subsystem_id"] == id {
+			return m
+		}
+	}
+	return map[string]any{}
 }

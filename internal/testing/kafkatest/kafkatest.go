@@ -113,8 +113,16 @@ func Produce(t *testing.T, topic string, keys ...string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	for _, k := range keys {
-		if err := w.WriteMessages(ctx, kafkago.Message{Key: []byte(k), Value: []byte(k)}); err != nil {
-			t.Fatalf("produce %s to %s: %v", k, topic, err)
+		// The writer's metadata can lag a topic CreateTopic just made (Unknown Topic Or Partition): retry until ctx ends.
+		for {
+			err := w.WriteMessages(ctx, kafkago.Message{Key: []byte(k), Value: []byte(k)})
+			if err == nil {
+				break
+			}
+			if ctx.Err() != nil {
+				t.Fatalf("produce %s to %s: %v", k, topic, err)
+			}
+			time.Sleep(200 * time.Millisecond)
 		}
 	}
 }
@@ -145,6 +153,33 @@ func EndOffset(t *testing.T, topic string) int64 {
 		t.Fatalf("read the end offset of %s/0: %v", topic, err)
 	}
 	return end
+}
+
+// Committed is group's committed offset on topic partition 0 (the next offset it reads), or -1 when it never
+// committed: a group that committed EndOffset has handled every record before that mark.
+// ruling P4-R19
+func Committed(t *testing.T, group, topic string) int64 {
+	t.Helper()
+	c := &kafkago.Client{Addr: kafkago.TCP(Brokers(t)...), Timeout: 10 * time.Second}
+	var last any
+	// The broker answers Not Coordinator / Coordinator Loading while its offsets topic is still being created: retry.
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		res, err := c.OffsetFetch(ctx, &kafkago.OffsetFetchRequest{GroupID: group, Topics: map[string][]int{topic: {0}}})
+		cancel()
+		switch {
+		case err != nil:
+			last = err
+		case res.Error != nil:
+			last = res.Error
+		case len(res.Topics[topic]) != 1 || res.Topics[topic][0].Error != nil:
+			last = res.Topics
+		default:
+			return res.Topics[topic][0].CommittedOffset
+		}
+	}
+	t.Fatalf("fetch the offset of group %s on %s/0: %v", group, topic, last)
+	return 0
 }
 
 // ReadAll reads topic partition 0 from the start until until(read) is true or timeout passes.
