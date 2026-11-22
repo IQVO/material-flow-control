@@ -128,7 +128,8 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	if len(bytes.TrimSpace(raw)) > 0 {
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
-		if err := dec.Decode(&body); err != nil {
+		// carry (Task 18 review): one JSON value, nothing after it (decodeJSON's rule).
+		if err := dec.Decode(&body); err != nil || dec.More() {
 			writeError(w, r, errMalformedRequest)
 			return
 		}
