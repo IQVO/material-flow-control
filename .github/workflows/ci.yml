@@ -212,8 +212,12 @@ jobs:
           ASRS_CONTROL_IMAGE: asrs-control:e2e
           AMR_FLEET_CONTROL_IMAGE: amr-fleet-control:e2e
           AMR_FLEET_CONTROL_MAP: ${{ github.workspace }}/.e2e/amr-fleet-control/config/map.example.yaml
-        # -timeout 25m: the e2e test's waits sum to 24 min at worst (its budget comment); go test's 10 min default
-        # would panic first. carry (Task 25 review)
+        # -timeout 25m: a hang guard, not a budget fit. The two e2e suites share this one
+        # binary; their failure-path wait budgets sum to 46 min at worst (24.3 + 21.7, the
+        # budget comments in cmd/api), past both this timeout and the job's 30 min. A real
+        # run of both suites is ~2 min on the emulator floor (104 s, plan 06 Task 4). go
+        # test's 10 min default would panic first. carry (Task 25 review; wording corrected
+        # by the Task 4 review, plan 06 Task 6)
         run: go test -tags=integration ./... -race -count=1 -timeout 25m
 
   pinned-contracts:
