@@ -195,7 +195,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: IQVO/amr-fleet-control
-          ref: 09a8f1915be5129efbb240dd6730fec640f93635 # v0.1.0 (the released amr-fleet-control; contracts/pinned.json)
+          ref: 86a142a380fa04bcbdc1bf9d5ad0ab24cac87486 # the plan-06 map-extension commit (released as v0.1.1 in Task 5; tag commit == this sha); contracts/pinned.json
           path: .e2e/amr-fleet-control
       - name: Build the three subsystem images (BuildKit)
         run: |
