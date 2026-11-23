@@ -19,7 +19,7 @@ import (
 // The wait budget fits `-timeout 25m` (the suite's CI step): container start <= 360 s, the catch-up 60 s, and
 // the row waits <= 883 s (4 putaways 4 x (60 + 10), the two parking picks 2 x 60, replenishment 90 + 10, the two
 // outbounds 2 x (90 + 10), clarification 90 + 30 + 30, the end check 3 + 30) — under the eight-row test's own
-// 1040 s row budget, 21.1 min in all; a run on the emulator floor (SIM_SPEED=10) takes about two minutes.
+// 1040 s row budget, 21.7 min in all; a run on the emulator floor (SIM_SPEED=10) takes about two minutes.
 func TestTheMapExtensionLegsAgainstTheRealSubsystems(t *testing.T) {
 	f := startFloor(t)
 	f.putaway("TOTE-20", "TOTE-21", "TOTE-22", "TOTE-23")
