@@ -18,8 +18,9 @@ import (
 )
 
 // The e2e test of plan 04 Task 25 (decision D23): the eight acceptance rows against the REAL subsystems, each the
-// image built from its released commit (asrs-control v0.1.1 a3e172d, amr-fleet-control v0.1.0 09a8f19,
-// equipment-emulator v0.1.0 b58201e; CI's integration job builds them, see .github/workflows/ci.yml).
+// image built from its pinned commit (asrs-control v0.1.1 a3e172d, equipment-emulator v0.1.0 b58201e, and since
+// plan 06 amr-fleet-control at the map-extension commit 86a142a — the map of version 2026-11-22.1, to be released
+// as v0.1.1; CI's integration job builds them, see .github/workflows/ci.yml and contracts/pinned.json).
 //
 // deviation (Task 25): the brief ran asrs-control and amr-fleet-control as host binaries because kafkatest's broker
 // advertised only 127.0.0.1. They run as their release IMAGES instead: every container joins the test binary's one
