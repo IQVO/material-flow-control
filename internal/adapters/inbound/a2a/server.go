@@ -74,7 +74,8 @@ func Card(cfg Config) *a2a.AgentCard {
 				Description: "Answer one transport request: status (IN_PROGRESS, CANCEL_REQUESTED, COMPLETED, FAILED, REJECTED), " +
 					"reason, the container's last confirmed location and every leg with its subsystem, kind (RETRIEVE, MOVE, " +
 					"STORE), status, the subsystem's job or leg id and the robot. Arguments: transportRequestId (required). " +
-					"Answers a transport-request-not-found problem for an unknown id. Persists nothing.",
+					"Answers a transport-request-not-found problem for an unknown id and a transport-request-expired " +
+					"problem for an id whose ended order the retention purged. Persists nothing.",
 				Tags:       []string{"transport", "read", "authority:L1"},
 				InputModes: []string{contentTypeJSON},
 				Examples:   []string{`{"skill":"transport_status","arguments":{"transportRequestId":"task-1.1"}}`},

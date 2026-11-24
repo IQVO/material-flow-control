@@ -254,6 +254,8 @@ var useCaseProblems = []struct {
 	p      problem
 }{
 	{usecases.ErrRequestNotFound, problem{Code: "transport-request-not-found", Title: "Transport request not found", Status: 404}},
+	// ruling P4-R22: the record outlived its order, which the retention purged.
+	{usecases.ErrTransportExpired, problem{Code: "transport-request-expired", Title: "Transport request expired", Status: 410}},
 	{usecases.ErrTrackNotFound, problem{Code: "container-track-not-found", Title: "Container track not found", Status: 404}},
 	{usecases.ErrStationNotFound, problem{Code: "station-not-found", Title: "Station not found", Status: 404}},
 	{usecases.ErrAsrsNotFound, problem{Code: "asrs-not-found", Title: "AS/RS not found", Status: 404}}, // carry (Task 20 review)
@@ -269,7 +271,7 @@ func problemFromUseCase(ctx context.Context, err error) *problem {
 			return newProblem(entry.p.Code, entry.p.Title, entry.p.Status, err.Error())
 		}
 	}
-	slog.ErrorContext(ctx, "a2a skill failed", "error", err)
+	slog.ErrorContext(ctx, "a2a skill failed", "error", logReplacer.Replace(err.Error()))
 	return newProblem("internal-error", "Internal server error", 500,
 		"the skill failed; see the server logs (trace id in the response metadata)")
 }

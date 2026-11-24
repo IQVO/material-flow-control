@@ -1,0 +1,55 @@
+# The example floor (ADR 0002): the emulator's example world (robots EMU/R1-R3 starting at
+# (0,0), (2,0), (4,0); AS/RS ASRS1 with port nodeIds ASRS1-IN1/OUT1/IN2/OUT2) plus, since plan 06,
+# the pick face PK1, the forward area FWD1 and the clarification point CLR1 as STATION handoff
+# points. Port node ids MUST equal the emulator's port nodeIds — the world's port nodeIds stay the
+# contract (the world has no floor graph; the pin is contracts/equipment-emulator.world.yaml).
+# Coordinates are metres; edges are undirected corridors.
+fleetId: AMR1
+mapId: S1
+version: "2026-11-22.1"
+nodes:
+  - {id: P1, x: 0, y: 0, kind: PARKING}
+  - {id: P2, x: 2, y: 0, kind: PARKING}
+  - {id: P3, x: 4, y: 0, kind: PARKING}
+  - {id: CH1, x: 6, y: 0, kind: CHARGER}
+  - {id: A, x: 0, y: 2, kind: WAYPOINT}
+  - {id: B, x: 2, y: 2, kind: WAYPOINT}
+  - {id: C, x: 4, y: 2, kind: WAYPOINT}
+  - {id: D, x: 6, y: 2, kind: WAYPOINT}
+  - {id: ASRS1-OUT1, x: 0, y: 4, kind: PORT, handoffPoint: ASRS1-OUT1}
+  - {id: ASRS1-IN1, x: 2, y: 4, kind: PORT, handoffPoint: ASRS1-IN1}
+  - {id: ASRS1-OUT2, x: 4, y: 4, kind: PORT, handoffPoint: ASRS1-OUT2}
+  - {id: ASRS1-IN2, x: 6, y: 4, kind: PORT, handoffPoint: ASRS1-IN2}
+  - {id: E, x: 0, y: 6, kind: WAYPOINT}
+  - {id: F, x: 2, y: 6, kind: WAYPOINT}
+  - {id: G, x: 4, y: 6, kind: WAYPOINT}
+  - {id: H, x: 6, y: 6, kind: WAYPOINT}
+  - {id: ST1, x: 0, y: 8, kind: STATION, handoffPoint: ST1}
+  - {id: ST2, x: 6, y: 8, kind: STATION, handoffPoint: ST2}
+  - {id: PK1, x: 2, y: 8, kind: STATION, handoffPoint: PK1}
+  - {id: FWD1, x: 4, y: 8, kind: STATION, handoffPoint: FWD1}
+  - {id: CLR1, x: 8, y: 6, kind: STATION, handoffPoint: CLR1}
+edges:
+  - {id: P1-A, a: P1, b: A}
+  - {id: P2-B, a: P2, b: B}
+  - {id: P3-C, a: P3, b: C}
+  - {id: CH1-D, a: CH1, b: D}
+  - {id: A-B, a: A, b: B}
+  - {id: B-C, a: B, b: C}
+  - {id: C-D, a: C, b: D}
+  - {id: A-ASRS1-OUT1, a: A, b: ASRS1-OUT1}
+  - {id: ASRS1-OUT1-E, a: ASRS1-OUT1, b: E}
+  - {id: B-ASRS1-IN1, a: B, b: ASRS1-IN1}
+  - {id: ASRS1-IN1-F, a: ASRS1-IN1, b: F}
+  - {id: C-ASRS1-OUT2, a: C, b: ASRS1-OUT2}
+  - {id: ASRS1-OUT2-G, a: ASRS1-OUT2, b: G}
+  - {id: D-ASRS1-IN2, a: D, b: ASRS1-IN2}
+  - {id: ASRS1-IN2-H, a: ASRS1-IN2, b: H}
+  - {id: E-F, a: E, b: F}
+  - {id: F-G, a: F, b: G}
+  - {id: G-H, a: G, b: H}
+  - {id: E-ST1, a: E, b: ST1}
+  - {id: H-ST2, a: H, b: ST2}
+  - {id: F-PK1, a: F, b: PK1}
+  - {id: G-FWD1, a: G, b: FWD1}
+  - {id: H-CLR1, a: H, b: CLR1}

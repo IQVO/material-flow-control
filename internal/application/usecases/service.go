@@ -25,6 +25,9 @@ var (
 	ErrTransportEnded     = errors.New("the transport has ended")
 	ErrNotCancellable     = errors.New("the transport cannot be cancelled now")
 	ErrNotInClarification = errors.New("the container is not in clarification")
+	// ErrTransportExpired: ruling P4-R22, an ACCEPTED request whose order the retention purged (ADR 0008). FINAL: the
+	// record is kept, so the id never becomes new again and a retry never re-executes.
+	ErrTransportExpired = errors.New("the transport request has expired: its order was purged after the retention window")
 )
 
 // RejectedError is a transport rejection. Its record and TransportRejected are committed (replay class OUTCOME).

@@ -35,8 +35,8 @@ Streamable HTTP only, stateless, mounted at `/mcp` and `/`; `GET /healthz` for t
 | Prompt | `review_transport` (argument `transportRequestId`): read the transport, its container and its station, and report the waiting leg and its cause |
 
 A failed read is an `isError` tool result `<code>: <detail>`, with the REST adapter's codes:
-`transport-request-not-found`, `container-track-not-found`, `station-not-found`, `asrs-not-found`,
-`invalid-parameter`; any other error is logged and answered `internal-error` with no infrastructure detail.
+`transport-request-not-found`, `transport-request-expired` (an id whose ended order the retention purged, ruling
+P4-R22), `container-track-not-found`, `station-not-found`, `asrs-not-found`, `invalid-parameter`; any other error is logged and answered `internal-error` with no infrastructure detail.
 
 ## A2A (`cmd/a2a`, :8093)
 

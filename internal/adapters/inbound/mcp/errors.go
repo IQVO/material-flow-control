@@ -17,6 +17,7 @@ var errorCatalogue = []struct {
 	slug   string
 }{
 	{usecases.ErrRequestNotFound, "transport-request-not-found"},
+	{usecases.ErrTransportExpired, "transport-request-expired"}, // ruling P4-R22
 	{usecases.ErrTrackNotFound, "container-track-not-found"},
 	{usecases.ErrStationNotFound, "station-not-found"},
 	{usecases.ErrAsrsNotFound, "asrs-not-found"}, // carry (Task 20 review); asrs-control's slug for the same outcome
@@ -46,6 +47,6 @@ func mapError(ctx context.Context, err error) error {
 	if slug, ok := slugFor(err); ok {
 		return toolError(slug, err.Error())
 	}
-	slog.ErrorContext(ctx, "mcp tool failed with an unexpected error", "error", err)
+	slog.ErrorContext(ctx, "mcp tool failed with an unexpected error", "error", logReplacer.Replace(err.Error()))
 	return toolError("internal-error", "an unexpected internal error occurred")
 }

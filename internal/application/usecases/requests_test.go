@@ -249,7 +249,8 @@ func TestQueriesAnswerNotFoundAndDefaults(t *testing.T) {
 	if err != nil || q.BufferLimit != 2 || len(q.Occupants) != 0 {
 		t.Fatalf("an empty station = %+v %v", q, err)
 	}
-	if subs, _ := e.svc.Subsystems(ctx); len(subs) != 0 {
+	// Nothing measured: only the layout's station, derived empty before its first arrival.
+	if subs, _ := e.svc.Subsystems(ctx); len(subs) != 1 || subs[0].Subject() != "STATION/ST1" || subs[0].Occupied != 0 {
 		t.Fatalf("subsystems = %+v", subs)
 	}
 	if _, err := usecases.NewService(e.svc.Layout(), usecases.DefaultConfig(), usecases.Deps{}); err == nil {

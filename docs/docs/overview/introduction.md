@@ -47,7 +47,9 @@ warehouse moves containers, but not where it competes. CloudEvents segment `wes`
 4. A container at a clarification point is **never dispatched** until it is resolved.
 5. Every accepted request ends in **exactly one** of `Completed` or `Failed`, and a failure carries a reason code.
 6. A request is **idempotent** on its `transport_request_id`: a retried request returns the original outcome and
-   creates no second order.
+   creates no second order. The request record is never deleted, so an id is never reused: once the retention
+   purged an accepted transport's ended order, the id answers `410 transport-request-expired`
+   ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)).
 
 ## What it does not own
 

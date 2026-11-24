@@ -48,9 +48,14 @@ by its `LocationCode`. No route or body names a robot, a leg, a node or a storag
 another request is `409 transport-request-conflict`; a rejected id stays rejected, so the caller sends a NEW
 `transport_request_id`, derived from the task id and the attempt, to try again).
 
+**Retention.** A request record is never deleted. Once the retention purges an ended transport's order
+(`ORDER_RETENTION_HOURS`, ADR 0008), its `transport_request_id` answers `410 transport-request-expired` on a
+read, a retried request and a cancellation: the id is never accepted again, so the caller never reuses it.
+
 **Replay classes** (every problem type declares one): FINAL — a function of the request alone, stored and
 replayed (`bad-request`, `invalid-parameter`, `transport-request-conflict`, `station-not-found`,
-`unknown-location`, `idempotency-key-required`, `idempotency-key-invalid`, `idempotency-key-reused`); OUTCOME — the four rejections
+`unknown-location`, `idempotency-key-required`, `idempotency-key-invalid`, `idempotency-key-reused`,
+`transport-request-expired`); OUTCOME — the four rejections
 (`unknown-container`, `container-busy`, `destination-unreachable`, `subsystem-unavailable`): the rejection
 record and `TransportRejected` commit WITH
 the stored answer, and a replay creates nothing; RETRYABLE — the key is released, so a retry under the same key

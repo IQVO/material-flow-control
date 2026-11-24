@@ -18,8 +18,9 @@ import (
 )
 
 // The e2e test of plan 04 Task 25 (decision D23): the eight acceptance rows against the REAL subsystems, each the
-// image built from its released commit (asrs-control v0.1.1 a3e172d, amr-fleet-control v0.1.0 09a8f19,
-// equipment-emulator v0.1.0 b58201e; CI's integration job builds them, see .github/workflows/ci.yml).
+// image built from its pinned commit (asrs-control v0.1.1 a3e172d, equipment-emulator v0.1.0 b58201e, and since
+// plan 06 amr-fleet-control at the map-extension commit 86a142a — the map of version 2026-11-22.1, to be released
+// as v0.1.1; CI's integration job builds them, see .github/workflows/ci.yml and contracts/pinned.json).
 //
 // deviation (Task 25): the brief ran asrs-control and amr-fleet-control as host binaries because kafkatest's broker
 // advertised only 127.0.0.1. They run as their release IMAGES instead: every container joins the test binary's one
@@ -63,7 +64,7 @@ func readFile(t *testing.T, path string) []byte {
 // carry (Task 25 review)
 func TestTheEightAcceptanceRowsAgainstTheRealSubsystems(t *testing.T) {
 	f := startFloor(t)
-	f.putaway()
+	f.putaway("TOTE-1", "TOTE-2", "TOTE-3")
 	pick, repl, busy := f.goodsToPersonIdempotencyAndRejection()
 	f.completed("pick", pick, 60*time.Second)
 	f.completed("replenishment", repl, 90*time.Second)
@@ -76,9 +77,9 @@ func TestTheEightAcceptanceRowsAgainstTheRealSubsystems(t *testing.T) {
 	// Outbound: from the forward area to the pack station.
 	f.completed("outbound", f.accept(f.id("out-1"), f.id("TOTE-2"), "WH1-FWD-FWD1", "WH1-PCK-PK1", "OUTBOUND"), 90*time.Second)
 	f.at(f.id("TOTE-2"), "AT_HANDOFF", "WH1-PCK-PK1") // carry (Task 25 review)
-	f.clarification()
+	f.clarification("TOTE-3", "pick-3")
 	f.capacityLoop()
-	f.oneOutcomeEach()
+	f.oneOutcomeEach(8, "(3 putaways, pick, replenishment, return, outbound, clarification)")
 }
 
 // at: the container's track is at kind/code within 10 s of its order's outcome (the codes are the flow layout's:
@@ -92,12 +93,12 @@ func (f *floor) at(container, kind, code string) {
 // oneOutcomeEach: after a short settle, ONE read of this run's facts up to the end offset; every order this run
 // accepted has exactly one outcome. ended() stops at an order's first outcome, so a late duplicate passed it.
 // carry (Task 25 review)
-func (f *floor) oneOutcomeEach() {
+func (f *floor) oneOutcomeEach(want int, composition string) {
 	f.t.Helper()
 	time.Sleep(3 * time.Second)
 	evs := f.window(f.start, kafkatest.EndOffset(f.t, mfcTopic))
-	if len(f.orders) != 8 {
-		f.t.Fatalf("this run accepted %d orders %v, want 8 (3 putaways, pick, replenishment, return, outbound, clarification)", len(f.orders), f.orders)
+	if len(f.orders) != want {
+		f.t.Fatalf("this run accepted %d orders %v, want %d %s", len(f.orders), f.orders, want, composition)
 	}
 	for _, order := range f.orders {
 		if all := outcomes(evs, order); len(all) != 1 {
@@ -106,10 +107,11 @@ func (f *floor) oneOutcomeEach() {
 	}
 }
 
-// putaway: TOTE-1..3 from the decant handoff into the AS/RS (TOTE-3 is the clarification row's container).
-func (f *floor) putaway() {
+// putaway: the given totes from the decant handoff into the AS/RS (the eight-row test stores TOTE-1..3, TOTE-3
+// for its clarification row; the map-extension test stores TOTE-20..23).
+func (f *floor) putaway(totes ...string) {
 	f.t.Helper()
-	for _, c := range []string{"TOTE-1", "TOTE-2", "TOTE-3"} {
+	for _, c := range totes {
 		order := f.accept(f.id("put-"+c), f.id(c), decant, asrsLoc, "PUTAWAY")
 		f.completed("putaway "+c, order, 60*time.Second)
 		f.at(f.id(c), "IN_ASRS", asrsLoc)
@@ -176,24 +178,25 @@ func (f *floor) rejection(busy int64) {
 	}
 }
 
-// clarification: the output ports cannot read; PICK TOTE-3 fails CLARIFICATION, the container goes to CLR1.
-// Both output ports get ASRS_NO_READ because asrs-control picks the output port of TOTE-3's aisle.
-func (f *floor) clarification() {
+// clarification: the output ports cannot read; PICK of the stored tote fails CLARIFICATION, the container goes
+// to the clarification point. Both output ports get ASRS_NO_READ because asrs-control picks the output port of
+// the tote's aisle. plan 06: the internal MOVE to CLR1 runs over the PINNED map (no inline nodes anywhere).
+func (f *floor) clarification(tote, pickID string) {
 	f.t.Helper()
 	f.fault("ASRS_NO_READ", "ASRS1", "OUT1", true)
 	f.fault("ASRS_NO_READ", "ASRS1", "OUT2", true)
-	order := f.accept(f.id("pick-3"), f.id("TOTE-3"), asrsLoc, "ST1", "PICK")
+	order := f.accept(f.id(pickID), f.id(tote), asrsLoc, "ST1", "PICK")
 	ev := f.ended(order, 90*time.Second)
 	if !strings.HasSuffix(fmt.Sprint(ev["type"]), ".TransportFailed") || data(ev)["reason"] != "CLARIFICATION" {
 		f.t.Fatalf("clarification outcome = %v", ev)
 	}
 	evs := factsFrom(f.t, f.marks[order], func(evs []map[string]any) bool { // ruling P4-R19
-		return len(named(evs, f.id("TOTE-3"), "ContainerSentToClarification")) >= 1
+		return len(named(evs, f.id(tote), "ContainerSentToClarification")) >= 1
 	}, 30*time.Second)
-	if d := data(named(evs, f.id("TOTE-3"), "ContainerSentToClarification")[0]); d["reason"] != "NO_READ" {
+	if d := data(named(evs, f.id(tote), "ContainerSentToClarification")[0]); d["reason"] != "NO_READ" {
 		f.t.Fatalf("sent to clarification = %v", d)
 	}
-	f.track(f.id("TOTE-3"), 30*time.Second, func(p map[string]any) bool {
+	f.track(f.id(tote), 30*time.Second, func(p map[string]any) bool {
 		return p["kind"] == "AT_CLARIFICATION" && p["code"] == "WH1-CLR-CLR1"
 	})
 	f.fault("ASRS_NO_READ", "ASRS1", "OUT1", false)

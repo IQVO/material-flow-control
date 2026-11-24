@@ -23,7 +23,23 @@ type config struct {
 	TickInterval                               time.Duration
 	UseCases                                   usecases.Config
 	ServiceName, ServiceVersion, OTLPEndpoint  string
+	Retention                                  retention
 }
+
+// retention is the purge policy of the operational tables (ADR 0008): how long each kind of terminal row is kept,
+// and the rows one purge batch deletes.
+type retention struct {
+	Orders, Moves, Commands, Outbox time.Duration
+	Batch                           int
+}
+
+// minOrderRetentionHours is the 24-hour idempotency window: a WES retries a transport_request_id within it, and a
+// retry after the record was purged would be accepted again and move the container twice.
+const minOrderRetentionHours = 24
+
+// maxRetentionHours caps every retention window at ten years. carry (retention review): time.Duration overflows past
+// 2562047 hours, and an overflowed window puts the cutoff in the future, which purges every terminal row at once.
+const maxRetentionHours = 87600
 
 type reader struct {
 	getenv func(string) string
@@ -74,6 +90,21 @@ func (r *reader) pos(name string, def int) int {
 	return n
 }
 
+// hours is a duration in hours of at least floor (1 = pos) and at most maxRetentionHours.
+func (r *reader) hours(name string, def, floor int) time.Duration {
+	v := r.str(name, "")
+	if v == "" {
+		return time.Duration(def) * time.Hour
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < floor || n > maxRetentionHours {
+		r.errs = append(r.errs, fmt.Errorf("%s must be a whole number of hours of at least %d and at most %d, got %q",
+			name, floor, maxRetentionHours, v))
+		return time.Duration(def) * time.Hour
+	}
+	return time.Duration(n) * time.Hour
+}
+
 // dur is a positive duration in unit (pos).
 func (r *reader) dur(name string, def int, unit time.Duration) time.Duration {
 	return time.Duration(r.pos(name, def)) * unit
@@ -100,6 +131,9 @@ func loadConfig(getenv func(string) string) (config, error) {
 	c.UseCases.LegRetryLimit = r.num("LEG_RETRY_LIMIT", c.UseCases.LegRetryLimit)
 	c.UseCases.LegRequestDeadline = r.dur("LEG_REQUEST_DEADLINE_SECONDS", 300, time.Second)
 	c.UseCases.LegTimeout = r.dur("LEG_TIMEOUT_SECONDS", 900, time.Second)
+	c.Retention = retention{Orders: r.hours("ORDER_RETENTION_HOURS", 720, minOrderRetentionHours),
+		Moves: r.hours("CONTAINER_MOVE_RETENTION_HOURS", 720, 1), Commands: r.hours("COMMAND_RETENTION_HOURS", 720, 1),
+		Outbox: r.hours("OUTBOX_RETENTION_HOURS", 168, 1), Batch: r.pos("PURGE_BATCH", 1000)}
 	// carry (plan 03 Task 16 review parity): a set-but-unknown LOG_LEVEL is a boot error, never a silent info.
 	if _, err := telemetry.ParseLogLevel(c.LogLevel); err != nil {
 		r.errs = append(r.errs, err)

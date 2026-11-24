@@ -1,33 +1,40 @@
 {
-  "_doc": "Every contract copy this repo pins from a producer, and the producer branch it must equal. scripts/harness/pinned_contract_gate.py fails when a copy differs from the producer's develop. Refresh = copy the file, never edit it. amr-fleet-control's pins were added after plan 03 merged (`09a8f1915be5129efbb240dd6730fec640f93635`).",
+  "_doc": "Every contract copy this repo pins from a producer, and the producer branch it must equal. scripts/harness/pinned_contract_gate.py fails when a copy differs from the producer's develop. Refresh = copy the file, never edit it. amr-fleet-control's pins were added after plan 03 merged (`09a8f1915be5129efbb240dd6730fec640f93635`) and raised, with the map pin added, to the plan 06 map-extension merge (`86a142a380fa04bcbdc1bf9d5ad0ab24cac87486`: the map that carries PK1/FWD1/CLR1).",
   "pins": [
     {
       "local": "contracts/asrs-control.asyncapi.yaml",
       "repo": "IQVO/asrs-control",
       "path": "apis/asyncapi.yaml",
       "ref": "develop",
-      "pinned_commit": "b23a5a2624e1582101f0e62835547c4806bcfac8"
+      "pinned_commit": "1e8067758e4f3e3f1de9da4905b0a884efa89b7a"
     },
     {
       "local": "contracts/asrs-control.openapi.yaml",
       "repo": "IQVO/asrs-control",
       "path": "apis/openapi.yaml",
       "ref": "develop",
-      "pinned_commit": "b23a5a2624e1582101f0e62835547c4806bcfac8"
+      "pinned_commit": "1e8067758e4f3e3f1de9da4905b0a884efa89b7a"
     },
     {
       "local": "contracts/amr-fleet-control.asyncapi.yaml",
       "repo": "IQVO/amr-fleet-control",
       "path": "apis/asyncapi.yaml",
       "ref": "develop",
-      "pinned_commit": "09a8f1915be5129efbb240dd6730fec640f93635"
+      "pinned_commit": "86a142a380fa04bcbdc1bf9d5ad0ab24cac87486"
     },
     {
       "local": "contracts/amr-fleet-control.openapi.yaml",
       "repo": "IQVO/amr-fleet-control",
       "path": "apis/openapi.yaml",
       "ref": "develop",
-      "pinned_commit": "09a8f1915be5129efbb240dd6730fec640f93635"
+      "pinned_commit": "86a142a380fa04bcbdc1bf9d5ad0ab24cac87486"
+    },
+    {
+      "local": "contracts/amr-fleet-control.map.yaml",
+      "repo": "IQVO/amr-fleet-control",
+      "path": "config/map.example.yaml",
+      "ref": "develop",
+      "pinned_commit": "86a142a380fa04bcbdc1bf9d5ad0ab24cac87486"
     }
   ]
 }

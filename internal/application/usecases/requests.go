@@ -192,6 +192,16 @@ func (s *Service) replay(ctx context.Context, rec transportrequest.Record) (Tran
 	return v, nil, err
 }
 
+// acceptedOrder loads the order of an ACCEPTED record. ruling P4-R22: the record outlives its order, which the
+// retention purges once ended (ADR 0008), so a missing order is the expired answer, never a 500.
+func (f *flow) acceptedOrder(rec transportrequest.Record) (*transportorder.Order, error) {
+	o, err := f.orderByID(rec.OrderID)
+	if errors.Is(err, ports.ErrNotFound) {
+		return nil, ErrTransportExpired
+	}
+	return o, err
+}
+
 // CancelTransport cancels a transport (decision D15).
 func (s *Service) CancelTransport(ctx context.Context, requestID string) (TransportView, CancelOutcome, error) {
 	var view TransportView
@@ -208,7 +218,7 @@ func (s *Service) CancelTransport(ctx context.Context, requestID string) (Transp
 			return fmt.Errorf("%w: the request was rejected", ErrTransportEnded)
 		}
 		f := s.newFlow(ctx)
-		o, err := f.orderByID(rec.OrderID)
+		o, err := f.acceptedOrder(rec)
 		if err != nil {
 			return err
 		}

@@ -28,6 +28,7 @@ type api struct {
 	events *memory.Events
 	tracks *memory.Tracks
 	orders *memory.Orders
+	store  *memory.Store
 }
 
 func newAPI(t *testing.T, opts ...func(*mfchttp.Server)) *api {
@@ -38,7 +39,7 @@ func newAPI(t *testing.T, opts ...func(*mfchttp.Server)) *api {
 	}
 	s := memory.NewStore()
 	clock := memory.NewClock(t0)
-	a := &api{t: t, events: memory.NewEvents(s), tracks: memory.NewTracks(s), orders: memory.NewOrders(s)}
+	a := &api{t: t, events: memory.NewEvents(s), tracks: memory.NewTracks(s), orders: memory.NewOrders(s), store: s}
 	uow := memory.NewUnitOfWork(s)
 	svc, err := usecases.NewService(l, usecases.DefaultConfig(), usecases.Deps{UoW: uow, Lock: memory.FlowLock{},
 		Requests: memory.NewRequests(s), Orders: a.orders, Tracks: a.tracks, Stations: memory.NewStations(s),

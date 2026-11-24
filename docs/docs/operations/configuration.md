@@ -36,13 +36,19 @@ are trimmed of surrounding spaces; an empty value counts as unset.
 | `LEG_RETRY_LIMIT` | `2` | New leg attempts per order after a retryable AMR `LegFailed` (decision D13). Non-negative: `0` means never retry. |
 | `LEG_REQUEST_DEADLINE_SECONDS` | `300` | How long a leg request is retried under one Idempotency-Key before the transport fails `SUBSYSTEM_FAULT`. Positive integer. |
 | `LEG_TIMEOUT_SECONDS` | `900` | A leg the subsystem accepted with no progress fact for this long fails the transport `TIMEOUT`. Positive integer. |
+| `ORDER_RETENTION_HOURS` | `720` | How long an ended transport order (with its legs) is kept ([ADR 0008](/docs/adr/0008-retention-of-the-operational-tables)); request records are never purged, and after the window the id answers `410 transport-request-expired`. At least `24`, the idempotency window a WES retries in: a smaller value is a boot error. |
+| `CONTAINER_MOVE_RETENTION_HOURS` | `720` | How long a container move is kept; a container's latest 20 moves (the track view) are always kept. Positive integer. |
+| `COMMAND_RETENTION_HOURS` | `720` | How long a `DONE` or `FAILED` subsystem command is kept (`PENDING` ones are never purged). Positive integer. |
+| `OUTBOX_RETENTION_HOURS` | `168` | How long a PUBLISHED outbox row is kept (unpublished rows are never purged). Positive integer. |
+| `PURGE_BATCH` | `1000` | Rows one retention batch deletes in one transaction; the hourly purge repeats batches until a table is done. Positive integer. |
 | `OTEL_SERVICE_NAME` | `material-flow-control` | OpenTelemetry `service.name`. |
 | `SERVICE_VERSION` | `dev` | `service.version`. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Collector OTLP/gRPC endpoint; empty = telemetry off. A bare `host:port` becomes `http://host:port`. |
 | `ENVIRONMENT` | `local` | `deployment.environment.name` (read by the telemetry adapter). |
 
 A positive-integer variable set to `0`, a negative number or a non-number is a boot error naming it; `LEG_RETRY_LIMIT`
-refuses only negatives and non-numbers. A `LOG_LEVEL` that is set but names no level is a boot error in all three
+refuses only negatives and non-numbers, and `ORDER_RETENTION_HOURS` also refuses values under `24`. Every
+`*_RETENTION_HOURS` window is at most `87600` (ten years): a larger value is a boot error naming it. A `LOG_LEVEL` that is set but names no level is a boot error in all three
 binaries, never a silent fallback to `info`.
 
 ## cmd/mcp
@@ -99,8 +105,8 @@ surrounding whitespace are boot errors that name the file and the entry. `config
 # The example material-flow layout (ADR 0002) of the emulator's example floor: AS/RS ASRS1 (asrs-control's
 # config/layout.example.yaml: ports IN1/OUT1 in aisle 1, IN2/OUT2 in aisle 2) whose port handoff points are
 # amr-fleet-control's map nodes ASRS1-IN1/OUT1/IN2/OUT2; goods-to-person station ST1; the decant handoff on map node
-# ST2; and PK1 (pack), FWD1 (forward area) and CLR1 (clarification), which amr-fleet-control's example map does NOT
-# have yet (plan 04 Q6: plan 06 adds them). Location codes follow facility-layout's AS/RS convention (plan 05a D14).
+# ST2; and PK1 (pack), FWD1 (forward area) and CLR1 (clarification), which amr-fleet-control's example map has
+# carried since plan 06 (map version 2026-11-22.1). Location codes follow facility-layout's AS/RS convention (plan 05a D14).
 # carry (Task 2 review, ruling P4-R4): the place codes here are EXAMPLE codes (the 3-segment WH1-GTP-ST1, WH1-RCV-DEC1,
 # WH1-PCK-PK1, WH1-FWD-FWD1, WH1-CLR-CLR1 are not facility-layout LocationCodes); a deployed layout uses the site's
 # real facility-layout location codes. material-flow-control treats place codes as opaque strings.

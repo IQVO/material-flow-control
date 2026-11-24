@@ -202,7 +202,7 @@ func (m *Idempotency) finishRefused(w http.ResponseWriter, r *http.Request, key,
 		stored, found, err := m.Store.Lookup(r.Context(), key, m.notBefore())
 		if err != nil {
 			// carry (Task 19 review): a failed re-read is logged; the request's own refusal still goes out.
-			m.Logger.WarnContext(r.Context(), "idempotency: re-read before an unstored refusal failed", "error", err)
+			m.Logger.WarnContext(r.Context(), "idempotency: re-read before an unstored refusal failed", "error", logSafe(err.Error()))
 		} else if found {
 			replay(w, r, stored, fp)
 			return
@@ -215,7 +215,7 @@ func (m *Idempotency) finishRefused(w http.ResponseWriter, r *http.Request, key,
 		err = m.Store.Save(r.Context(), rec, m.notBefore())
 	}
 	if err != nil {
-		m.Logger.WarnContext(r.Context(), "idempotency: refusal not stored", "error", err)
+		m.Logger.WarnContext(r.Context(), "idempotency: refusal not stored", "error", logSafe(err.Error()))
 		flush(w, out)
 		return
 	}

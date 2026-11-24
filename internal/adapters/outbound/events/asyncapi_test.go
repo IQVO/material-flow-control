@@ -28,6 +28,9 @@ func TestTheAsyncAPIContractDeclaresExactlyTheSevenTypesWithOneExampleEach(t *te
 	}
 	var names []string
 	for name, m := range doc.Components.Messages {
+		if strings.HasPrefix(name, "Consumed") { // a consumed subsystem fact (internal/adapters/inbound/kafka declares them)
+			continue
+		}
 		names = append(names, name)
 		if len(m.Examples) != 1 || m.Examples[0].Payload["type"] == nil {
 			t.Fatalf("%s: %d examples", name, len(m.Examples))
