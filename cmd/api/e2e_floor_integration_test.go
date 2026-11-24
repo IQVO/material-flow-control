@@ -130,31 +130,41 @@ func (f *floor) startEmulator() {
 		WaitingFor: wait.ForHTTP("/readyz").WithPort("8080/tcp").WithStartupTimeout(60 * time.Second)})
 }
 
-// amrMap is amr-fleet-control's pinned example map plus the pack, forward and clarification nodes (plan Q6).
+// amrMap is amr-fleet-control's pinned example map, which carries PK1/FWD1/CLR1 since plan 06 (map version
+// 2026-11-22.1; the plan Q6 inline node additions are gone): the bytes are written UNCHANGED to a temp file for
+// the container. The handoff assertion is the pin-raise guard (plan 06 D6): a checkout still at a pre-plan-06
+// map fails HERE with the missing points, not on the floor as a runtime 422 unknown-handoff-point.
 func amrMap(t *testing.T) string {
 	t.Helper()
 	b, err := os.ReadFile(required(t, "AMR_FLEET_CONTROL_MAP"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var m map[string]any
+	var m struct {
+		Nodes []struct {
+			HandoffPoint string `yaml:"handoffPoint"`
+		} `yaml:"nodes"`
+	}
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
-	nodes, _ := m["nodes"].([]any)
-	edges, _ := m["edges"].([]any)
-	for _, n := range []map[string]any{{"id": "PK1", "x": 2, "y": 8, "kind": "STATION", "handoffPoint": "PK1"},
-		{"id": "FWD1", "x": 4, "y": 8, "kind": "STATION", "handoffPoint": "FWD1"},
-		{"id": "CLR1", "x": 8, "y": 6, "kind": "STATION", "handoffPoint": "CLR1"}} {
-		nodes = append(nodes, n)
+	handoffs := make(map[string]bool, len(m.Nodes))
+	for _, n := range m.Nodes {
+		if n.HandoffPoint != "" {
+			handoffs[n.HandoffPoint] = true
+		}
 	}
-	for _, e := range [][2]string{{"F", "PK1"}, {"G", "FWD1"}, {"H", "CLR1"}} {
-		edges = append(edges, map[string]any{"id": e[0] + "-" + e[1], "a": e[0], "b": e[1]})
+	var missing []string
+	for _, id := range []string{"PK1", "FWD1", "CLR1"} {
+		if !handoffs[id] {
+			missing = append(missing, id)
+		}
 	}
-	m["nodes"], m["edges"] = nodes, edges
-	out, _ := yaml.Marshal(m)
+	if len(missing) > 0 {
+		t.Fatalf("pinned amr map lacks handoff point(s): %s (raise the amr-fleet-control pins in contracts/pinned.json and the ci.yml integration checkout ref together, plan 06 D6)", strings.Join(missing, ", "))
+	}
 	path := filepath.Join(t.TempDir(), "map.yaml")
-	if err := os.WriteFile(path, out, 0o644); err != nil { //nolint:gosec // read by the container's non-root user
+	if err := os.WriteFile(path, b, 0o644); err != nil { //nolint:gosec // read by the container's non-root user
 		t.Fatal(err)
 	}
 	return path
