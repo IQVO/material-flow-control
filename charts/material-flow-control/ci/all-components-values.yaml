@@ -6,10 +6,16 @@ mcp:
   enabled: true
   route:
     enabled: true
+    parentRefs:
+      - name: agent-router
+        namespace: envoy-gateway-system
 a2a:
   enabled: true
   route:
     enabled: true
+    parentRefs:
+      - name: agent-router
+        namespace: envoy-gateway-system
 gatewayApi:
   enabled: true
   parentRefs:
