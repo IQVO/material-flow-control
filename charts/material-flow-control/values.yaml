@@ -88,7 +88,12 @@ mcp:
   route:
     enabled: false
     path: /api/mcp/material-flow-control
-    # Empty = gatewayApi.parentRefs. warehouse-infra's _platform.yaml supplies the shared Gateway here.
+    # Route timeout (HTTPRoute rule timeouts.request). "0s" disables it: Envoy's 15s
+    # default would cut MCP Streamable HTTP responses that stream over SSE.
+    timeouts:
+      request: "0s"
+    # warehouse-infra's _platform.yaml supplies the shared agent-router Gateway here. No fallback to
+    # gatewayApi.parentRefs (that is the Kong Gateway: MCP/A2A are not Kong's).
     parentRefs: []
 a2a:
   enabled: false
@@ -101,7 +106,12 @@ a2a:
   route:
     enabled: false
     path: /api/a2a/material-flow-control
-    # Empty = gatewayApi.parentRefs. warehouse-infra's _platform.yaml supplies the shared Gateway here.
+    # Route timeout (HTTPRoute rule timeouts.request). "0s" disables it: Envoy's 15s
+    # default would cut long A2A calls and streamed (SSE) responses.
+    timeouts:
+      request: "0s"
+    # warehouse-infra's _platform.yaml supplies the shared agent-router Gateway here. No fallback to
+    # gatewayApi.parentRefs (that is the Kong Gateway: MCP/A2A are not Kong's).
     parentRefs: []
 # capacity step 3 (warehouse-infra ADR 0012): true (with mcp.enabled and a2a.enabled) runs cmd/mcp and cmd/a2a as
 # two containers of one <release>-agents Deployment. Off by default; warehouse-infra switches it on.
